@@ -15,13 +15,13 @@ EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif"}
 
 def infer_volume(path: Path) -> tuple[int | None, str | None]:
     text = str(path.relative_to(IMG_DIR)).replace("\\", "/")
-    pid_match = re.search(r"(?<!\\d)(8516(?:4[6-9]|5[0-9]|60))(?!\\d)", text)
+    pid_match = re.search(r"(?<!\d)(8516(?:4[6-9]|5[0-9]|60))(?!\d)", text)
     if pid_match:
         pid = int(pid_match.group(1))
         return pid - 851645, str(pid)
     patterns = [
-        r"(?i)(?:volume|vol|v)[ _.-]*(0?\\d{1,2})(?!\\d)",
-        r"第\\s*(\\d{1,2})\\s*(?:編|篇|巻|卷)",
+        r"(?i)(?:volume|vol|v)[ _.-]*(0?\d{1,2})(?!\d)",
+        r"第\s*(\d{1,2})\s*(?:編|篇|巻|卷)",
     ]
     for pattern in patterns:
         match = re.search(pattern, path.stem)
@@ -50,7 +50,7 @@ def main() -> None:
             "bytes": path.stat().st_size,
         })
     INDEX_PATH.write_text(
-        json.dumps({"images": images, "image_count": len(images)}, ensure_ascii=False, indent=2) + "\\n",
+        json.dumps({"images": images, "image_count": len(images)}, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
     print(f"Wrote {INDEX_PATH.relative_to(ROOT)} with {len(images)} image(s).")
