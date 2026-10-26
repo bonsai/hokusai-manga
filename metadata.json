@@ -1,0 +1,212 @@
+{
+  "schema_version": "1.0.0",
+  "dataset_id": "hokusai_manga",
+  "dataset_title": "Hokusai Manga (北斎漫画)",
+  "creator": {
+    "name": "Katsushika Hokusai",
+    "name_ja": "葛飾北斎"
+  },
+  "source": {
+    "institution": "National Diet Library, Japan",
+    "institution_ja": "国立国会図書館",
+    "catalog_base_url": "https://ndlsearch.ndl.go.jp/books/R100000039-I",
+    "iiif_manifest_template": "https://www.dl.ndl.go.jp/api/iiif/{pid}/manifest.json",
+    "image_source": "NDL IIIF image service",
+    "rights_note": "Verify rights and terms for each digitized item and intended use before redistribution or model training."
+  },
+  "intended_use": {
+    "purpose": "LoRA training dataset preparation",
+    "trigger_token": "hokusai_manga",
+    "caption_language": "en",
+    "default_caption": "hokusai_manga, Japanese ukiyo-e manga illustration, Katsushika Hokusai, traditional Japanese drawing"
+  },
+  "packaging": {
+    "max_image_side_px": 1024,
+    "format": "JPEG",
+    "quality": 88,
+    "preserve_aspect_ratio": true,
+    "zip_filename": "hokusai_manga_lora_dataset.zip"
+  },
+  "volumes": [
+    {
+      "volume": 1,
+      "volume_label": "Volume 1",
+      "volume_label_ja": "第1編",
+      "ndl_pid": "851646",
+      "ndl_catalog_url": "https://ndlsearch.ndl.go.jp/books/R100000039-I851646",
+      "iiif_manifest_url": "https://www.dl.ndl.go.jp/api/iiif/851646/manifest.json",
+      "source_directory": "output/851646",
+      "packaged_image_prefix": "851646_",
+      "verification_status": "catalog_reference_identified",
+      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download."
+    },
+    {
+      "volume": 2,
+      "volume_label": "Volume 2",
+      "volume_label_ja": "第2編",
+      "ndl_pid": "851647",
+      "ndl_catalog_url": "https://ndlsearch.ndl.go.jp/books/R100000039-I851647",
+      "iiif_manifest_url": "https://www.dl.ndl.go.jp/api/iiif/851647/manifest.json",
+      "source_directory": "output/851647",
+      "packaged_image_prefix": "851647_",
+      "verification_status": "pid_sequence_assumption",
+      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download."
+    },
+    {
+      "volume": 3,
+      "volume_label": "Volume 3",
+      "volume_label_ja": "第3編",
+      "ndl_pid": "851648",
+      "ndl_catalog_url": "https://ndlsearch.ndl.go.jp/books/R100000039-I851648",
+      "iiif_manifest_url": "https://www.dl.ndl.go.jp/api/iiif/851648/manifest.json",
+      "source_directory": "output/851648",
+      "packaged_image_prefix": "851648_",
+      "verification_status": "pid_sequence_assumption",
+      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download."
+    },
+    {
+      "volume": 4,
+      "volume_label": "Volume 4",
+      "volume_label_ja": "第4編",
+      "ndl_pid": "851649",
+      "ndl_catalog_url": "https://ndlsearch.ndl.go.jp/books/R100000039-I851649",
+      "iiif_manifest_url": "https://www.dl.ndl.go.jp/api/iiif/851649/manifest.json",
+      "source_directory": "output/851649",
+      "packaged_image_prefix": "851649_",
+      "verification_status": "pid_sequence_assumption",
+      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download."
+    },
+    {
+      "volume": 5,
+      "volume_label": "Volume 5",
+      "volume_label_ja": "第5編",
+      "ndl_pid": "851650",
+      "ndl_catalog_url": "https://ndlsearch.ndl.go.jp/books/R100000039-I851650",
+      "iiif_manifest_url": "https://www.dl.ndl.go.jp/api/iiif/851650/manifest.json",
+      "source_directory": "output/851650",
+      "packaged_image_prefix": "851650_",
+      "verification_status": "pid_sequence_assumption",
+      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download."
+    },
+    {
+      "volume": 6,
+      "volume_label": "Volume 6",
+      "volume_label_ja": "第6編",
+      "ndl_pid": "851651",
+      "ndl_catalog_url": "https://ndlsearch.ndl.go.jp/books/R100000039-I851651",
+      "iiif_manifest_url": "https://www.dl.ndl.go.jp/api/iiif/851651/manifest.json",
+      "source_directory": "output/851651",
+      "packaged_image_prefix": "851651_",
+      "verification_status": "pid_sequence_assumption",
+      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download."
+    },
+    {
+      "volume": 7,
+      "volume_label": "Volume 7",
+      "volume_label_ja": "第7編",
+      "ndl_pid": "851652",
+      "ndl_catalog_url": "https://ndlsearch.ndl.go.jp/books/R100000039-I851652",
+      "iiif_manifest_url": "https://www.dl.ndl.go.jp/api/iiif/851652/manifest.json",
+      "source_directory": "output/851652",
+      "packaged_image_prefix": "851652_",
+      "verification_status": "catalog_reference_identified",
+      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download."
+    },
+    {
+      "volume": 8,
+      "volume_label": "Volume 8",
+      "volume_label_ja": "第8編",
+      "ndl_pid": "851653",
+      "ndl_catalog_url": "https://ndlsearch.ndl.go.jp/books/R100000039-I851653",
+      "iiif_manifest_url": "https://www.dl.ndl.go.jp/api/iiif/851653/manifest.json",
+      "source_directory": "output/851653",
+      "packaged_image_prefix": "851653_",
+      "verification_status": "pid_sequence_assumption",
+      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download."
+    },
+    {
+      "volume": 9,
+      "volume_label": "Volume 9",
+      "volume_label_ja": "第9編",
+      "ndl_pid": "851654",
+      "ndl_catalog_url": "https://ndlsearch.ndl.go.jp/books/R100000039-I851654",
+      "iiif_manifest_url": "https://www.dl.ndl.go.jp/api/iiif/851654/manifest.json",
+      "source_directory": "output/851654",
+      "packaged_image_prefix": "851654_",
+      "verification_status": "pid_sequence_assumption",
+      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download."
+    },
+    {
+      "volume": 10,
+      "volume_label": "Volume 10",
+      "volume_label_ja": "第10編",
+      "ndl_pid": "851655",
+      "ndl_catalog_url": "https://ndlsearch.ndl.go.jp/books/R100000039-I851655",
+      "iiif_manifest_url": "https://www.dl.ndl.go.jp/api/iiif/851655/manifest.json",
+      "source_directory": "output/851655",
+      "packaged_image_prefix": "851655_",
+      "verification_status": "catalog_reference_identified",
+      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download."
+    },
+    {
+      "volume": 11,
+      "volume_label": "Volume 11",
+      "volume_label_ja": "第11編",
+      "ndl_pid": "851656",
+      "ndl_catalog_url": "https://ndlsearch.ndl.go.jp/books/R100000039-I851656",
+      "iiif_manifest_url": "https://www.dl.ndl.go.jp/api/iiif/851656/manifest.json",
+      "source_directory": "output/851656",
+      "packaged_image_prefix": "851656_",
+      "verification_status": "pid_sequence_assumption",
+      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download."
+    },
+    {
+      "volume": 12,
+      "volume_label": "Volume 12",
+      "volume_label_ja": "第12編",
+      "ndl_pid": "851657",
+      "ndl_catalog_url": "https://ndlsearch.ndl.go.jp/books/R100000039-I851657",
+      "iiif_manifest_url": "https://www.dl.ndl.go.jp/api/iiif/851657/manifest.json",
+      "source_directory": "output/851657",
+      "packaged_image_prefix": "851657_",
+      "verification_status": "pid_sequence_assumption",
+      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download."
+    },
+    {
+      "volume": 13,
+      "volume_label": "Volume 13",
+      "volume_label_ja": "第13編",
+      "ndl_pid": "851658",
+      "ndl_catalog_url": "https://ndlsearch.ndl.go.jp/books/R100000039-I851658",
+      "iiif_manifest_url": "https://www.dl.ndl.go.jp/api/iiif/851658/manifest.json",
+      "source_directory": "output/851658",
+      "packaged_image_prefix": "851658_",
+      "verification_status": "catalog_reference_identified",
+      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download."
+    },
+    {
+      "volume": 14,
+      "volume_label": "Volume 14",
+      "volume_label_ja": "第14編",
+      "ndl_pid": "851659",
+      "ndl_catalog_url": "https://ndlsearch.ndl.go.jp/books/R100000039-I851659",
+      "iiif_manifest_url": "https://www.dl.ndl.go.jp/api/iiif/851659/manifest.json",
+      "source_directory": "output/851659",
+      "packaged_image_prefix": "851659_",
+      "verification_status": "catalog_reference_identified",
+      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download."
+    },
+    {
+      "volume": 15,
+      "volume_label": "Volume 15",
+      "volume_label_ja": "第15編",
+      "ndl_pid": "851660",
+      "ndl_catalog_url": "https://ndlsearch.ndl.go.jp/books/R100000039-I851660",
+      "iiif_manifest_url": "https://www.dl.ndl.go.jp/api/iiif/851660/manifest.json",
+      "source_directory": "output/851660",
+      "packaged_image_prefix": "851660_",
+      "verification_status": "catalog_reference_identified",
+      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download."
+    }
+  ]
+}
