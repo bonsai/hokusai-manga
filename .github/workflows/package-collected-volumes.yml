@@ -1,0 +1,99 @@
+name: Combine collected Hokusai Manga volumes for LoRA
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_ids:
+        description: "Comma-separated GitHub Actions run IDs for the completed volume downloads"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install image processing dependency
+        run: python -m pip install --upgrade Pillow
+
+      - name: Download and combine volume artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_IDS: ${{ inputs.run_ids }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p collected output
+          IFS=',' read -ra ids <<< "$RUN_IDS"
+          for raw_id in "${ids[@]}"; do
+            run_id="$(echo "$raw_id" | xargs)"
+            if [[ ! "$run_id" =~ ^[0-9]+$ ]]; then
+              echo "Invalid run ID: $run_id" >&2
+              exit 1
+            fi
+            echo "::group::Collect volume artifact from run $run_id"
+            gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --pattern "hokusai-manga-volume-*" --dir "collected/$run_id"
+            found=0
+            while IFS= read -r -d '' volume_dir; do
+              pid="$(basename "$volume_dir")"
+              mkdir -p "output/$pid"
+              cp -a "$volume_dir/." "output/$pid/"
+              echo "Collected PID $pid from run $run_id"
+              found=1
+            done < <(find "collected/$run_id" -type d -path '*/output/851[0-9][0-9][0-9]' -print0)
+            if [ "$found" -eq 0 ]; then
+              echo "No volume directory found in artifacts from run $run_id" >&2
+              exit 1
+            fi
+            echo "::endgroup::"
+          done
+
+      - name: Prepare combined LoRA dataset
+        run: >-
+          python scripts/package_lora_dataset.py
+          --input output
+          --output dist
+          --max-side 1024
+          --quality 88
+
+      - name: Write collection summary
+        if: always()
+        run: |
+          {
+            echo "## Combined Hokusai Manga LoRA dataset"
+            echo "- Included volume folders:"
+            find output -mindepth 1 -maxdepth 1 -type d -printf '  - %f\n' | sort
+            if [ -f dist/hokusai_manga_lora/dataset.json ]; then
+              python - <<'PY'
+          import json, pathlib
+          p = pathlib.Path("dist/hokusai_manga_lora/dataset.json")
+          data = json.loads(p.read_text(encoding="utf-8"))
+          print(f"- Prepared images: {data['image_count']}")
+          print(f"- ZIP: dist/hokusai_manga_lora_dataset.zip")
+          PY
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload combined dataset
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: hokusai-manga-lora-dataset-combined
+          path: |
+            dist/hokusai_manga_lora_dataset.zip
+            dist/hokusai_manga_lora/dataset.json
+            metadata.json
+          if-no-files-found: error
+          retention-days: 30
