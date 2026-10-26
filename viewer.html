@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hokusai Manga — Volume Viewer</title>
+  <meta name="description" content="Browse the 15-volume Hokusai Manga dataset metadata and open NDL catalog and IIIF manifests.">
+  <style>
+    :root { color-scheme: light dark; --bg: #f5f3ef; --panel: #fff; --text: #24211e; --muted: #716b63; --line: #ddd7ce; --accent: #a33d2d; }
+    @media (prefers-color-scheme: dark) { :root { --bg:#191817; --panel:#242220; --text:#f4efe8; --muted:#b5aca1; --line:#48413a; --accent:#ff9b87; } }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    header { padding: 2.5rem max(1rem, calc((100vw - 1100px)/2)); background: var(--panel); border-bottom: 1px solid var(--line); }
+    .eyebrow { color: var(--accent); text-transform: uppercase; letter-spacing: .12em; font-size: .75rem; font-weight: 800; }
+    h1 { margin: .25rem 0; font-size: clamp(2rem, 5vw, 3.5rem); line-height: 1.05; }
+    header p { max-width: 680px; color: var(--muted); margin-bottom: 0; }
+    main { max-width: 1100px; margin: 0 auto; padding: 1.5rem 1rem 4rem; }
+    .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; margin-bottom: 1rem; }
+    input, select, button { font: inherit; border: 1px solid var(--line); border-radius: .65rem; padding: .65rem .8rem; background: var(--panel); color: var(--text); }
+    input { flex: 1 1 240px; }
+    button { cursor: pointer; }
+    button:hover, a:hover { filter: brightness(.9); }
+    #status { color: var(--muted); font-size: .9rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 1rem; }
+    article { background: var(--panel); border: 1px solid var(--line); border-radius: .9rem; padding: 1rem; min-width: 0; }
+    .vol { color: var(--accent); font-weight: 800; font-size: .8rem; letter-spacing: .08em; }
+    article h2 { font-size: 1.25rem; margin: .25rem 0 .65rem; }
+    dl { display: grid; grid-template-columns: 5.5rem minmax(0,1fr); gap: .35rem .6rem; font-size: .9rem; margin: .8rem 0; }
+    dt { color: var(--muted); } dd { margin: 0; overflow-wrap: anywhere; }
+    .links { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1rem; }
+    a { color: var(--accent); font-weight: 700; }
+    .links a { display: inline-block; padding: .45rem .6rem; border: 1px solid var(--line); border-radius: .5rem; text-decoration: none; font-size: .85rem; }
+    .tag { display: inline-block; border-radius: 999px; padding: .15rem .5rem; background: var(--bg); color: var(--muted); font-size: .75rem; }
+    .note { margin-top: 1.5rem; padding: 1rem; border-left: 3px solid var(--accent); background: var(--panel); color: var(--muted); }
+    footer { text-align: center; padding: 1.5rem; color: var(--muted); font-size: .85rem; }
+    .error { color: #c33; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="eyebrow">Dataset explorer · 1814–1878 era</div>
+    <h1>北斎漫画 <span style="font-size:.55em">Hokusai Manga</span></h1>
+    <p>A lightweight browser viewer for the 15-volume dataset metadata. Explore volume records and open the National Diet Library catalog or IIIF manifest.</p>
+  </header>
+  <main>
+    <div class="toolbar">
+      <input id="search" type="search" placeholder="Search volume number, PID, or title…" aria-label="Search volumes">
+      <select id="statusFilter" aria-label="Filter verification status">
+        <option value="">All verification states</option>
+        <option value="catalog_reference_identified">Catalog reference identified</option>
+        <option value="pid_sequence_assumption">PID sequence assumption</option>
+      </select>
+      <button id="reload" type="button">Reload metadata</button>
+    </div>
+    <p id="status" role="status">Loading metadata.json…</p>
+    <section id="volumes" class="grid" aria-label="Hokusai Manga volumes"></section>
+    <div class="note"><strong>Data note:</strong> PID-to-volume mappings are provisional until each NDL catalog record and IIIF manifest has been checked. Image access and reuse rights should be confirmed at the source before redistribution or model training.</div>
+  </main>
+  <footer>Metadata source: <a href="./metadata.json">metadata.json</a> · <a href="https://ndlsearch.ndl.go.jp/" target="_blank" rel="noopener noreferrer">National Diet Library Search</a></footer>
+  <script>
+    const statusEl = document.querySelector('#status');
+    const grid = document.querySelector('#volumes');
+    const searchEl = document.querySelector('#search');
+    const filterEl = document.querySelector('#statusFilter');
+    let metadata = null;
+
+    function safeText(value) {
+      return String(value ?? '');
+    }
+
+    function render() {
+      if (!metadata) return;
+      const query = searchEl.value.trim().toLowerCase();
+      const state = filterEl.value;
+      const rows = (metadata.volumes || []).filter(v => {
+        const haystack = [v.volume, v.volume_label, v.volume_label_ja, v.ndl_pid, v.verification_status].join(' ').toLowerCase();
+        return haystack.includes(query) && (!state || v.verification_status === state);
+      });
+      grid.replaceChildren();
+      for (const v of rows) {
+        const article = document.createElement('article');
+        const label = document.createElement('div');
+        label.className = 'vol';
+        label.textContent = 'VOLUME ' + safeText(v.volume);
+        const heading = document.createElement('h2');
+        heading.textContent = safeText(v.volume_label_ja || v.volume_label || ('Volume ' + v.volume));
+        const tag = document.createElement('span');
+        tag.className = 'tag';
+        tag.textContent = safeText(v.verification_status || 'status unknown').replaceAll('_', ' ');
+        const dl = document.createElement('dl');
+        const fields = [
+          ['English', v.volume_label],
+          ['NDL PID', v.ndl_pid],
+          ['Source dir', v.source_directory],
+          ['Status', v.verification_status]
+        ];
+        for (const [term, value] of fields) {
+          if (value == null || value === '') continue;
+          const dt = document.createElement('dt'); dt.textContent = term;
+          const dd = document.createElement('dd'); dd.textContent = safeText(value);
+          dl.append(dt, dd);
+        }
+        const links = document.createElement('div');
+        links.className = 'links';
+        for (const [labelText, url] of [
+          ['NDL catalog', v.ndl_catalog_url],
+          ['IIIF manifest', v.iiif_manifest_url]
+        ]) {
+          if (!url) continue;
+          try {
+            const parsed = new URL(url);
+            if (parsed.protocol !== 'https:') continue;
+            const a = document.createElement('a');
+            a.href = parsed.href; a.textContent = labelText;
+            a.target = '_blank'; a.rel = 'noopener noreferrer';
+            links.append(a);
+          } catch (_) {}
+        }
+        article.append(label, heading, tag, dl, links);
+        grid.append(article);
+      }
+      statusEl.textContent = 'Showing ' + rows.length + ' of ' + (metadata.volumes || []).length + ' volumes · ' + safeText(metadata.dataset_title || metadata.dataset_id);
+      if (!rows.length) statusEl.textContent = 'No volumes match your search.';
+    }
+
+    async function loadMetadata() {
+      statusEl.className = '';
+      statusEl.textContent = 'Loading metadata.json…';
+      try {
+        const response = await fetch('./metadata.json', { cache: 'no-store' });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        const data = await response.json();
+        if (!Array.isArray(data.volumes)) throw new Error('metadata.json has no volumes array');
+        metadata = data;
+        render();
+      } catch (error) {
+        statusEl.className = 'error';
+        statusEl.textContent = 'Could not load metadata.json. Open this page from a web server (for example GitHub Pages), and check that metadata.json is in the same directory. Details: ' + error.message;
+      }
+    }
+
+    searchEl.addEventListener('input', render);
+    filterEl.addEventListener('change', render);
+    document.querySelector('#reload').addEventListener('click', loadMetadata);
+    loadMetadata();
+  </script>
+</body>
+</html>
