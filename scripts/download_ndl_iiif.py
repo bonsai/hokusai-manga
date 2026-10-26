@@ -146,10 +146,16 @@ def update_dataset_metadata(
 
 def download(pid: str, output: Path, delay: float, metadata_path: Path) -> int:
     manifest_url = MANIFEST_TEMPLATE.format(pid=pid)
-    raw, content_type = fetch(manifest_url)
-    manifest = json.loads(raw.decode("utf-8-sig"))
     folder = output / pid
     folder.mkdir(parents=True, exist_ok=True)
+    try:
+        raw, content_type = fetch(manifest_url)
+        manifest = json.loads(raw.decode("utf-8-sig"))
+    except Exception as exc:
+        (folder / "errors.txt").write_text(
+            f"manifest request failed: {exc}\n", encoding="utf-8"
+        )
+        raise
     (folder / "manifest.json").write_bytes(raw)
     (folder / "source.txt").write_text(
         f"NDL PID: {pid}\nManifest: {manifest_url}\n"
