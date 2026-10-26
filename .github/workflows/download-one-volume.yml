@@ -1,0 +1,54 @@
+name: Download one NDL volume
+
+on:
+  workflow_dispatch:
+    inputs:
+      pid:
+        description: "NDL digital collection PID (e.g. 851659)"
+        required: true
+        default: "851659"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ndl-download-${{ inputs.pid }}
+  cancel-in-progress: false
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download IIIF pages
+        id: download
+        continue-on-error: true
+        run: >-
+          python scripts/download_ndl_iiif.py
+          --pid "${{ inputs.pid }}"
+          --output output
+          --delay 0.75
+
+      - name: Upload downloaded pages and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hokusai-manga-pid-${{ inputs.pid }}
+          path: output/${{ inputs.pid }}/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Report download status
+        if: steps.download.outcome == 'failure'
+        run: |
+          echo "Some or all pages could not be downloaded. Inspect errors.txt in the artifact."
+          exit 1
