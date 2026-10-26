@@ -1,25 +1,19 @@
-name: Download one NDL volume
+name: Download and package Hokusai Manga for LoRA
 
 on:
   workflow_dispatch:
-    inputs:
-      pid:
-        description: "NDL digital collection PID (e.g. 851659)"
-        required: true
-        default: "851659"
-        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: ndl-download-${{ inputs.pid }}
+  group: hokusai-manga-lora-dataset
   cancel-in-progress: false
 
 jobs:
-  download:
+  download-and-package:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 300
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -29,26 +23,51 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Download IIIF pages
+      - name: Install image processing dependency
+        run: python -m pip install --upgrade Pillow
+
+      - name: Download all 15 public NDL volumes
         id: download
         continue-on-error: true
-        run: >-
-          python scripts/download_ndl_iiif.py
-          --pid "${{ inputs.pid }}"
-          --output output
-          --delay 0.75
+        shell: bash
+        run: |
+          set +e
+          failed=0
+          # Hokusai Manga, volumes 1-15: NDL PIDs 851646-851660.
+          for pid in $(seq 851646 851660); do
+            echo "::group::Download NDL PID ${pid}"
+            python scripts/download_ndl_iiif.py --pid "${pid}" --output output --delay 0.75
+            result=$?
+            if [ "$result" -ne 0 ]; then
+              echo "Download errors for PID ${pid}; keeping logs and continuing."
+              failed=1
+            fi
+            echo "::endgroup::"
+          done
+          echo "download_failed=$failed" >> "$GITHUB_OUTPUT"
+          exit 0
 
-      - name: Upload downloaded pages and logs
+      - name: Prepare resized images and ZIP
+        run: >-
+          python scripts/package_lora_dataset.py
+          --input output
+          --output dist
+          --max-side 1024
+          --quality 88
+
+      - name: Upload compact LoRA dataset
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: hokusai-manga-pid-${{ inputs.pid }}
-          path: output/${{ inputs.pid }}/
+          name: hokusai-manga-lora-dataset
+          path: |
+            dist/hokusai_manga_lora_dataset.zip
+            output/*/errors.txt
           if-no-files-found: error
           retention-days: 14
 
-      - name: Report download status
-        if: steps.download.outcome == 'failure'
+      - name: Report incomplete downloads
+        if: steps.download.outputs.download_failed == '1'
         run: |
-          echo "Some or all pages could not be downloaded. Inspect errors.txt in the artifact."
+          echo "One or more pages failed. See per-volume errors.txt files in the artifact."
           exit 1
