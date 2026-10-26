@@ -36,7 +36,7 @@ jobs:
           # Hokusai Manga, volumes 1-15: NDL PIDs 851646-851660.
           for pid in $(seq 851646 851660); do
             echo "::group::Download NDL PID ${pid}"
-            python scripts/download_ndl_iiif.py --pid "${pid}" --output output --delay 0.75
+            python scripts/download_ndl_iiif.py --pid "${pid}" --output output --delay 0.75 --metadata metadata.json
             result=$?
             if [ "$result" -ne 0 ]; then
               echo "Download errors for PID ${pid}; keeping logs and continuing."
@@ -62,6 +62,8 @@ jobs:
           name: hokusai-manga-lora-dataset
           path: |
             dist/hokusai_manga_lora_dataset.zip
+            metadata.json
+            output/*/pages.json
             output/*/errors.txt
           if-no-files-found: error
           retention-days: 14
