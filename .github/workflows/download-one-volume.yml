@@ -1,19 +1,40 @@
-name: Download and package Hokusai Manga for LoRA
+name: Download one Hokusai Manga volume
 
 on:
   workflow_dispatch:
+    inputs:
+      pid:
+        description: "NDL PID for one volume (851646-851660)"
+        required: true
+        type: choice
+        options:
+          - "851646"
+          - "851647"
+          - "851648"
+          - "851649"
+          - "851650"
+          - "851651"
+          - "851652"
+          - "851653"
+          - "851654"
+          - "851655"
+          - "851656"
+          - "851657"
+          - "851658"
+          - "851659"
+          - "851660"
 
 permissions:
   contents: read
 
 concurrency:
-  group: hokusai-manga-lora-dataset
+  group: hokusai-manga-volume-${{ inputs.pid }}
   cancel-in-progress: false
 
 jobs:
-  download-and-package:
+  download-one-volume:
     runs-on: ubuntu-latest
-    timeout-minutes: 300
+    timeout-minutes: 120
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -23,53 +44,58 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install image processing dependency
-        run: python -m pip install --upgrade Pillow
-
-      - name: Download all 15 public NDL volumes
+      - name: Download selected volume only
         id: download
         continue-on-error: true
         shell: bash
+        env:
+          PID: ${{ inputs.pid }}
         run: |
-          set +e
-          failed=0
-          # Hokusai Manga, volumes 1-15: NDL PIDs 851646-851660.
-          for pid in $(seq 851646 851660); do
-            echo "::group::Download NDL PID ${pid}"
-            python scripts/download_ndl_iiif.py --pid "${pid}" --output output --delay 0.75 --metadata metadata.json
-            result=$?
-            if [ "$result" -ne 0 ]; then
-              echo "Download errors for PID ${pid}; keeping logs and continuing."
-              failed=1
-            fi
-            echo "::endgroup::"
-          done
-          echo "download_failed=$failed" >> "$GITHUB_OUTPUT"
+          python scripts/download_ndl_iiif.py --pid "$PID" --output output --delay 1.5 --metadata metadata.json
+          result=$?
+          echo "download_result=$result" >> "$GITHUB_OUTPUT"
           exit 0
 
-      - name: Prepare resized images and ZIP
-        run: >-
-          python scripts/package_lora_dataset.py
-          --input output
-          --output dist
-          --max-side 1024
-          --quality 88
+      - name: Summarize this volume
+        if: always()
+        shell: bash
+        env:
+          PID: ${{ inputs.pid }}
+          RESULT: ${{ steps.download.outputs.download_result }}
+        run: |
+          mkdir -p output
+          {
+            echo "## Hokusai Manga volume $PID"
+            if [ "$RESULT" = "0" ]; then
+              echo "- Status: complete"
+            else
+              echo "- Status: partial or failed; inspect errors.txt"
+            fi
+            if [ -f "output/$PID/pages.json" ]; then
+              python - "$PID" <<'PY'
+          import json, pathlib, sys
+          pid = sys.argv[1]
+          data = json.loads(pathlib.Path(f"output/{pid}/pages.json").read_text(encoding="utf-8"))
+          pages = data.get("pages", [])
+          ok = sum(p.get("download_status") in {"downloaded", "available"} for p in pages)
+          print(f"- Pages available: {ok}/{len(pages)}")
+          PY
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload compact LoRA dataset
+      - name: Upload volume artifact
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: hokusai-manga-lora-dataset
+          name: hokusai-manga-volume-${{ inputs.pid }}
           path: |
-            dist/hokusai_manga_lora_dataset.zip
+            output/${{ inputs.pid }}/
             metadata.json
-            output/*/pages.json
-            output/*/errors.txt
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
 
-      - name: Report incomplete downloads
-        if: steps.download.outputs.download_failed == '1'
+      - name: Mark incomplete volume
+        if: steps.download.outputs.download_result != '0'
         run: |
-          echo "One or more pages failed. See per-volume errors.txt files in the artifact."
+          echo "This volume has missing or failed pages. The artifact was still uploaded for review/retry."
           exit 1
