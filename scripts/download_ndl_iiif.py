@@ -217,7 +217,7 @@ def download(pid: str, output: Path, delay: float, metadata_path: Path) -> int:
         (folder / "errors.txt").write_text("\\n".join(errors) + "\\n", encoding="utf-8")
         print(f"Completed with {len(errors)} page errors; see {folder / 'errors.txt'}")
     print(f"Saved/available: {saved}/{len(canvases)} pages in {folder}")
-    return 0 if errors else 0
+    return 2 if errors else 0
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
