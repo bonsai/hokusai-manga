@@ -38,7 +38,9 @@
       "source_directory": "output/851646",
       "packaged_image_prefix": "851646_",
       "verification_status": "catalog_reference_identified",
-      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download."
+      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download.",
+      "page_count": null,
+      "pages": []
     },
     {
       "volume": 2,
@@ -50,7 +52,9 @@
       "source_directory": "output/851647",
       "packaged_image_prefix": "851647_",
       "verification_status": "pid_sequence_assumption",
-      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download."
+      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download.",
+      "page_count": null,
+      "pages": []
     },
     {
       "volume": 3,
@@ -62,7 +66,9 @@
       "source_directory": "output/851648",
       "packaged_image_prefix": "851648_",
       "verification_status": "pid_sequence_assumption",
-      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download."
+      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download.",
+      "page_count": null,
+      "pages": []
     },
     {
       "volume": 4,
@@ -74,7 +80,9 @@
       "source_directory": "output/851649",
       "packaged_image_prefix": "851649_",
       "verification_status": "pid_sequence_assumption",
-      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download."
+      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download.",
+      "page_count": null,
+      "pages": []
     },
     {
       "volume": 5,
@@ -86,7 +94,9 @@
       "source_directory": "output/851650",
       "packaged_image_prefix": "851650_",
       "verification_status": "pid_sequence_assumption",
-      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download."
+      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download.",
+      "page_count": null,
+      "pages": []
     },
     {
       "volume": 6,
@@ -98,7 +108,9 @@
       "source_directory": "output/851651",
       "packaged_image_prefix": "851651_",
       "verification_status": "pid_sequence_assumption",
-      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download."
+      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download.",
+      "page_count": null,
+      "pages": []
     },
     {
       "volume": 7,
@@ -110,7 +122,9 @@
       "source_directory": "output/851652",
       "packaged_image_prefix": "851652_",
       "verification_status": "catalog_reference_identified",
-      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download."
+      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download.",
+      "page_count": null,
+      "pages": []
     },
     {
       "volume": 8,
@@ -122,7 +136,9 @@
       "source_directory": "output/851653",
       "packaged_image_prefix": "851653_",
       "verification_status": "pid_sequence_assumption",
-      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download."
+      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download.",
+      "page_count": null,
+      "pages": []
     },
     {
       "volume": 9,
@@ -134,7 +150,9 @@
       "source_directory": "output/851654",
       "packaged_image_prefix": "851654_",
       "verification_status": "pid_sequence_assumption",
-      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download."
+      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download.",
+      "page_count": null,
+      "pages": []
     },
     {
       "volume": 10,
@@ -146,7 +164,9 @@
       "source_directory": "output/851655",
       "packaged_image_prefix": "851655_",
       "verification_status": "catalog_reference_identified",
-      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download."
+      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download.",
+      "page_count": null,
+      "pages": []
     },
     {
       "volume": 11,
@@ -158,7 +178,9 @@
       "source_directory": "output/851656",
       "packaged_image_prefix": "851656_",
       "verification_status": "pid_sequence_assumption",
-      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download."
+      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download.",
+      "page_count": null,
+      "pages": []
     },
     {
       "volume": 12,
@@ -170,7 +192,9 @@
       "source_directory": "output/851657",
       "packaged_image_prefix": "851657_",
       "verification_status": "pid_sequence_assumption",
-      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download."
+      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download.",
+      "page_count": null,
+      "pages": []
     },
     {
       "volume": 13,
@@ -182,7 +206,9 @@
       "source_directory": "output/851658",
       "packaged_image_prefix": "851658_",
       "verification_status": "catalog_reference_identified",
-      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download."
+      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download.",
+      "page_count": null,
+      "pages": []
     },
     {
       "volume": 14,
@@ -194,7 +220,9 @@
       "source_directory": "output/851659",
       "packaged_image_prefix": "851659_",
       "verification_status": "catalog_reference_identified",
-      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download."
+      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download.",
+      "page_count": null,
+      "pages": []
     },
     {
       "volume": 15,
@@ -206,7 +234,25 @@
       "source_directory": "output/851660",
       "packaged_image_prefix": "851660_",
       "verification_status": "catalog_reference_identified",
-      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download."
+      "notes": "Volume number is mapped to the sequential NDL PID range 851646-851660; verify the manifest/catalog metadata during download.",
+      "page_count": null,
+      "pages": []
     }
-  ]
+  ],
+  "page_metadata_schema": {
+    "description": "Each volume's pages array is populated from its IIIF manifest by scripts/download_ndl_iiif.py during the bulk download workflow.",
+    "fields": {
+      "page_number": "1-based sequence number in the IIIF manifest",
+      "label": "IIIF canvas label",
+      "canvas_id": "IIIF canvas identifier",
+      "image_service_id": "IIIF image service/resource identifier",
+      "image_url": "Requested page image URL",
+      "local_file": "Relative path of downloaded source page",
+      "width": "Canvas width in pixels when supplied by IIIF",
+      "height": "Canvas height in pixels when supplied by IIIF",
+      "download_status": "pending, downloaded, available, missing_image_id, or error",
+      "local_bytes": "Downloaded file size when available",
+      "error": "Download error text when download failed"
+    }
+  }
 }
