@@ -117,6 +117,44 @@
           } catch (_) {}
         }
         article.append(label, heading, tag, dl, links);
+        if (Array.isArray(v.pages) && v.pages.length) {
+          const details = document.createElement('details');
+          const summary = document.createElement('summary');
+          summary.textContent = 'Page records (' + v.pages.length + ')';
+          details.append(summary);
+          const pageList = document.createElement('ol');
+          pageList.style.paddingLeft = '1.4rem';
+          for (const page of v.pages) {
+            const li = document.createElement('li');
+            li.style.margin = '.65rem 0';
+            const title = document.createElement('strong');
+            title.textContent = 'Page ' + safeText(page.page_number) + (page.label ? ': ' + safeText(page.label) : '');
+            li.append(title);
+            const info = document.createElement('div');
+            info.style.color = 'var(--muted)';
+            info.style.fontSize = '.8rem';
+            info.textContent = [
+              page.width && page.height ? page.width + ' × ' + page.height + ' px' : '',
+              page.download_status || '',
+              page.local_file || ''
+            ].filter(Boolean).join(' · ');
+            li.append(info);
+            if (page.image_url) {
+              try {
+                const parsed = new URL(page.image_url);
+                if (parsed.protocol === 'https:') {
+                  const a = document.createElement('a');
+                  a.href = parsed.href; a.textContent = 'Source image';
+                  a.target = '_blank'; a.rel = 'noopener noreferrer';
+                  li.append(document.createTextNode(' '), a);
+                }
+              } catch (_) {}
+            }
+            pageList.append(li);
+          }
+          details.append(pageList);
+          article.append(details);
+        }
         grid.append(article);
       }
       statusEl.textContent = 'Showing ' + rows.length + ' of ' + (metadata.volumes || []).length + ' volumes · ' + safeText(metadata.dataset_title || metadata.dataset_id);
