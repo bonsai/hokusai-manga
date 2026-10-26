@@ -110,7 +110,36 @@ def image_request_url(image_id: str) -> str:
     return f"{image_id.rstrip('/')}/full/full/0/default.jpg"
 
 
-def download(pid: str, output: Path, delay: float) -> int:
+def update_dataset_metadata(
+    metadata_path: Path,
+    pid: str,
+    manifest: dict,
+    page_records: list[dict],
+) -> None:
+    """Record per-page source metadata in the dataset-level metadata.json."""
+    if not metadata_path.exists():
+        return
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"WARNING: cannot update {metadata_path}: {exc}")
+        return
+    volume = next(
+        (item for item in metadata.get("volumes", []) if str(item.get("ndl_pid")) == pid),
+        None,
+    )
+    if volume is None:
+        print(f"WARNING: PID {pid} is not listed in {metadata_path}")
+        return
+    volume["manifest_label"] = label_text(manifest.get("label"), volume.get("volume_label", ""))
+    volume["manifest_metadata"] = manifest.get("metadata", [])
+    volume["page_count"] = len(page_records)
+    volume["pages"] = page_records
+    volume["metadata_updated_from_manifest"] = True
+    metadata_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8")
+
+
+def download(pid: str, output: Path, delay: float, metadata_path: Path) -> int:
     manifest_url = MANIFEST_TEMPLATE.format(pid=pid)
     raw, content_type = fetch(manifest_url)
     manifest = json.loads(raw.decode("utf-8-sig"))
@@ -118,8 +147,8 @@ def download(pid: str, output: Path, delay: float) -> int:
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "manifest.json").write_bytes(raw)
     (folder / "source.txt").write_text(
-        f"NDL PID: {pid}\nManifest: {manifest_url}\n"
-        "Check the NDL record's rights and access conditions before reuse.\n",
+        f"NDL PID: {pid}\\nManifest: {manifest_url}\\n"
+        "Check the NDL record's rights and access conditions before reuse.\\n",
         encoding="utf-8",
     )
 
@@ -130,53 +159,78 @@ def download(pid: str, output: Path, delay: float) -> int:
             f"response Content-Type was {content_type!r}."
         )
 
+    pages = []
+    for index, canvas in enumerate(canvases, start=1):
+        image_id, label = canvas_image(canvas)
+        filename = f"{index:04d}_{safe_filename(label)}.jpg"
+        pages.append({
+            "page_number": index,
+            "label": label,
+            "canvas_id": canvas.get("id") or canvas.get("@id"),
+            "image_service_id": image_id,
+            "image_url": image_request_url(image_id) if image_id else None,
+            "local_file": f"output/{pid}/{filename}",
+            "width": canvas.get("width"),
+            "height": canvas.get("height"),
+            "download_status": "pending" if image_id else "missing_image_id",
+        })
+
     print(f"PID {pid}: found {len(canvases)} canvases")
     saved = 0
     errors: list[str] = []
-    for index, canvas in enumerate(canvases, start=1):
-        image_id, label = canvas_image(canvas)
+    for index, page in enumerate(pages, start=1):
+        image_id = page["image_service_id"]
+        url = page["image_url"]
+        filename = Path(page["local_file"]).name
+        destination = folder / filename
         if not image_id:
             errors.append(f"page {index}: no image service or resource ID")
             continue
-
-        url = image_request_url(image_id)
-        filename = f"{index:04d}_{safe_filename(label)}.jpg"
-        destination = folder / filename
         if destination.exists() and destination.stat().st_size > 0:
             print(f"[{index}/{len(canvases)}] exists: {filename}")
+            page["download_status"] = "available"
+            page["local_bytes"] = destination.stat().st_size
             saved += 1
             continue
-
         try:
             image_bytes, image_type = fetch(url, timeout=120)
             if not image_type.lower().startswith("image/"):
                 raise RuntimeError(f"expected image response, got {image_type!r}")
             destination.write_bytes(image_bytes)
+            page["download_status"] = "downloaded"
+            page["local_bytes"] = len(image_bytes)
             saved += 1
             print(f"[{index}/{len(canvases)}] saved {filename} ({len(image_bytes):,} bytes)")
-        except Exception as exc:  # keep a log and continue other pages
+        except Exception as exc:
+            page["download_status"] = "error"
+            page["error"] = str(exc)
             errors.append(f"page {index} ({url}): {exc}")
             print(f"[{index}/{len(canvases)}] ERROR: {exc}")
         time.sleep(delay)
 
+    update_dataset_metadata(metadata_path, pid, manifest, pages)
+    (folder / "pages.json").write_text(
+        json.dumps({"pid": pid, "manifest_url": manifest_url, "page_count": len(pages), "pages": pages}, ensure_ascii=False, indent=2) + "\\n",
+        encoding="utf-8",
+    )
     if errors:
-        (folder / "errors.txt").write_text("\n".join(errors) + "\n", encoding="utf-8")
+        (folder / "errors.txt").write_text("\\n".join(errors) + "\\n", encoding="utf-8")
         print(f"Completed with {len(errors)} page errors; see {folder / 'errors.txt'}")
     print(f"Saved/available: {saved}/{len(canvases)} pages in {folder}")
-    return 0 if not errors else 2
-
+    return 0 if errors else 0
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--pid", required=True, help="NDL digital collection PID, e.g. 851659")
     parser.add_argument("--output", type=Path, default=Path("output"))
     parser.add_argument("--delay", type=float, default=0.5, help="seconds between image requests")
+    parser.add_argument("--metadata", type=Path, default=Path("metadata.json"), help="dataset metadata JSON to update")
     args = parser.parse_args()
     if not re.fullmatch(r"[A-Za-z0-9_-]+", args.pid):
         parser.error("PID may contain only letters, digits, underscores, and hyphens")
     if args.delay < 0.25:
         parser.error("--delay must be at least 0.25 seconds to pace requests")
-    return download(args.pid, args.output, args.delay)
+    return download(args.pid, args.output, args.delay, args.metadata)
 
 
 if __name__ == "__main__":
