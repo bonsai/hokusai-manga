@@ -30,6 +30,11 @@
     .links { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1rem; }
     a { color: var(--accent); font-weight: 700; }
     .links a { display: inline-block; padding: .45rem .6rem; border: 1px solid var(--line); border-radius: .5rem; text-decoration: none; font-size: .85rem; }
+    .image-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: .65rem; margin-top: .9rem; }
+    .image-card { min-width: 0; }
+    .image-card img { display: block; width: 100%; aspect-ratio: 3 / 4; object-fit: contain; background: var(--bg); border: 1px solid var(--line); border-radius: .5rem; }
+    .image-card a { display: block; font-size: .78rem; overflow-wrap: anywhere; margin-top: .25rem; }
+    .image-count { color: var(--muted); font-size: .85rem; margin-top: .7rem; }
     .tag { display: inline-block; border-radius: 999px; padding: .15rem .5rem; background: var(--bg); color: var(--muted); font-size: .75rem; }
     .note { margin-top: 1.5rem; padding: 1rem; border-left: 3px solid var(--accent); background: var(--panel); color: var(--muted); }
     footer { text-align: center; padding: 1.5rem; color: var(--muted); font-size: .85rem; }
@@ -62,7 +67,7 @@
     const grid = document.querySelector('#volumes');
     const searchEl = document.querySelector('#search');
     const filterEl = document.querySelector('#statusFilter');
-    let metadata = null;
+    let metadata = null;\n    let imageIndex = [];
 
     function safeText(value) {
       return String(value ?? '');
@@ -117,6 +122,42 @@
           } catch (_) {}
         }
         article.append(label, heading, tag, dl, links);
+
+        const pageRecords = Array.isArray(v.pages) ? v.pages : [];
+        const indexedImages = Array.isArray(imageIndex)
+          ? imageIndex.filter(item => String(item.volume ?? item.ndl_pid ?? '') === String(v.volume ?? '') ||
+                                      String(item.volume ?? item.ndl_pid ?? '') === String(v.ndl_pid ?? ''))
+          : [];
+        const pageImages = pageRecords.map(page => ({
+          label: page.label || ('Page ' + page.page_number),
+          url: page.viewer_url || page.image_path || page.local_file,
+          page_number: page.page_number
+        })).filter(item => item.url);
+        const images = indexedImages.length ? indexedImages : pageImages;
+        if (images.length) {
+          const gallery = document.createElement('div');
+          gallery.className = 'image-gallery';
+          for (const item of images) {
+            const imagePath = String(item.url || '').replace(/\\\\/g, '/');
+            if (!imagePath || /^(?:[a-z]+:|\\/\\/)/i.test(imagePath) && !imagePath.startsWith('https://')) continue;
+            const card = document.createElement('div');
+            card.className = 'image-card';
+            const img = document.createElement('img');
+            img.loading = 'lazy';
+            img.alt = safeText(item.label || item.filename || 'Hokusai Manga page');
+            img.src = imagePath.startsWith('img/') || imagePath.startsWith('./') || imagePath.startsWith('https://')
+              ? imagePath : ('img/' + imagePath.replace(/^\\.\\//, ''));
+            img.onerror = () => { card.hidden = true; };
+            const link = document.createElement('a');
+            link.href = img.src;
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            link.textContent = safeText(item.label || item.filename || 'Open image');
+            card.append(img, link);
+            gallery.append(card);
+          }
+          if (gallery.childElementCount) article.append(gallery);
+        }
         if (Array.isArray(v.pages) && v.pages.length) {
           const details = document.createElement('details');
           const summary = document.createElement('summary');
@@ -170,6 +211,17 @@
         const data = await response.json();
         if (!Array.isArray(data.volumes)) throw new Error('metadata.json has no volumes array');
         metadata = data;
+        try {
+          const indexResponse = await fetch('./img/index.json', { cache: 'no-store' });
+          if (indexResponse.ok) {
+            const indexData = await indexResponse.json();
+            imageIndex = Array.isArray(indexData) ? indexData : (Array.isArray(indexData.images) ? indexData.images : []);
+          } else {
+            imageIndex = [];
+          }
+        } catch (_) {
+          imageIndex = [];
+        }
         render();
       } catch (error) {
         statusEl.className = 'error';
