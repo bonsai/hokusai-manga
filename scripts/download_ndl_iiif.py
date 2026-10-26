@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Download page images from a publicly accessible NDL IIIF manifest."""
+"""Download page images from a publicly accessible NDL IIIF manifest, one volume at a time."""
 
 from __future__ import annotations
 
@@ -12,13 +12,26 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 MANIFEST_TEMPLATE = "https://www.dl.ndl.go.jp/api/iiif/{pid}/manifest.json"
-USER_AGENT = "bonsai-hokusai-manga/1.0 (NDL IIIF research downloader)"
+USER_AGENT = "bonsai-hokusai-manga/1.1 (NDL IIIF research downloader)"
+IMAGE_SIGNATURES = (
+    b"\xff\xd8\xff",  # JPEG
+    b"\x89PNG\r\n\x1a\n",  # PNG
+    b"GIF87a",
+    b"GIF89a",
+)
 
 
 def fetch(url: str, timeout: int = 90, attempts: int = 4) -> tuple[bytes, str]:
-    """Fetch a URL with a small backoff for transient failures."""
+    """Fetch a URL with backoff for transient failures; do not retry access-denied responses."""
     for attempt in range(attempts):
-        request = Request(url, headers={"User-Agent": USER_AGENT})
+        request = Request(
+            url,
+            headers={
+                "User-Agent": USER_AGENT,
+                "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+                "Referer": "https://www.dl.ndl.go.jp/",
+            },
+        )
         try:
             with urlopen(request, timeout=timeout) as response:
                 return response.read(), response.headers.get("Content-Type", "")
@@ -53,8 +66,6 @@ def first_service(service: object) -> dict:
 def canvas_image(canvas: dict) -> tuple[str | None, str]:
     """Return an image URL/service ID and a useful canvas label (IIIF v2/v3)."""
     label = label_text(canvas.get("label"), "page")
-
-    # Presentation API 2: canvas.images[].resource.service
     images = canvas.get("images", [])
     if images:
         resource = images[0].get("resource", {})
@@ -66,7 +77,6 @@ def canvas_image(canvas: dict) -> tuple[str | None, str]:
         if resource_id:
             return str(resource_id), label
 
-    # Presentation API 3: canvas.items[].items[].body.service
     for annotation_page in canvas.get("items", []):
         for annotation in annotation_page.get("items", []):
             body = annotation.get("body", {})
@@ -81,19 +91,13 @@ def canvas_image(canvas: dict) -> tuple[str | None, str]:
             body_id = body.get("id") or body.get("@id")
             if body_id:
                 return str(body_id), label
-
     return None, label
 
 
 def get_canvases(manifest: dict) -> list[dict]:
-    # IIIF Presentation API 2
     sequences = manifest.get("sequences", [])
     if sequences:
         return sequences[0].get("canvases", [])
-    # IIIF Presentation API 3
-    for item in manifest.get("items", []):
-        if isinstance(item, dict) and item.get("type") == "Canvas":
-            pass
     return [item for item in manifest.get("items", []) if isinstance(item, dict)]
 
 
@@ -103,20 +107,21 @@ def safe_filename(value: str) -> str:
 
 
 def image_request_url(image_id: str) -> str:
-    # IIIF Image API request for the full image. The provider may impose a
-    # maximum output size; "full" does not guarantee the archival master.
     if "/full/" in image_id and image_id.lower().endswith((".jpg", ".jpeg", ".png", ".jp2")):
         return image_id
     return f"{image_id.rstrip('/')}/full/full/0/default.jpg"
 
 
+def looks_like_image(data: bytes) -> bool:
+    if any(data.startswith(signature) for signature in IMAGE_SIGNATURES):
+        return True
+    # WebP: RIFF....WEBP
+    return len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP"
+
+
 def update_dataset_metadata(
-    metadata_path: Path,
-    pid: str,
-    manifest: dict,
-    page_records: list[dict],
+    metadata_path: Path, pid: str, manifest: dict, page_records: list[dict]
 ) -> None:
-    """Record per-page source metadata in the dataset-level metadata.json."""
     if not metadata_path.exists():
         return
     try:
@@ -136,7 +141,7 @@ def update_dataset_metadata(
     volume["page_count"] = len(page_records)
     volume["pages"] = page_records
     volume["metadata_updated_from_manifest"] = True
-    metadata_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8")
+    metadata_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def download(pid: str, output: Path, delay: float, metadata_path: Path) -> int:
@@ -147,8 +152,8 @@ def download(pid: str, output: Path, delay: float, metadata_path: Path) -> int:
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "manifest.json").write_bytes(raw)
     (folder / "source.txt").write_text(
-        f"NDL PID: {pid}\\nManifest: {manifest_url}\\n"
-        "Check the NDL record's rights and access conditions before reuse.\\n",
+        f"NDL PID: {pid}\nManifest: {manifest_url}\n"
+        "Check the NDL record's rights and access conditions before reuse.\n",
         encoding="utf-8",
     )
 
@@ -187,20 +192,27 @@ def download(pid: str, output: Path, delay: float, metadata_path: Path) -> int:
             errors.append(f"page {index}: no image service or resource ID")
             continue
         if destination.exists() and destination.stat().st_size > 0:
-            print(f"[{index}/{len(canvases)}] exists: {filename}")
-            page["download_status"] = "available"
-            page["local_bytes"] = destination.stat().st_size
-            saved += 1
-            continue
+            existing = destination.read_bytes()
+            if looks_like_image(existing):
+                print(f"[{index}/{len(canvases)}] exists: {filename}")
+                page["download_status"] = "available"
+                page["local_bytes"] = len(existing)
+                saved += 1
+                continue
+            destination.unlink()
         try:
             image_bytes, image_type = fetch(url, timeout=120)
-            if not image_type.lower().startswith("image/"):
-                raise RuntimeError(f"expected image response, got {image_type!r}")
+            if not looks_like_image(image_bytes):
+                raise RuntimeError(
+                    f"response is not a recognized image (Content-Type={image_type!r}, "
+                    f"bytes={len(image_bytes)})"
+                )
             destination.write_bytes(image_bytes)
             page["download_status"] = "downloaded"
             page["local_bytes"] = len(image_bytes)
+            page["content_type"] = image_type
             saved += 1
-            print(f"[{index}/{len(canvases)}] saved {filename} ({len(image_bytes):,} bytes)")
+            print(f"[{index}/{len(canvases)}] saved {filename} ({len(image_bytes):,} bytes; {image_type or 'unknown type'})")
         except Exception as exc:
             page["download_status"] = "error"
             page["error"] = str(exc)
@@ -210,26 +222,29 @@ def download(pid: str, output: Path, delay: float, metadata_path: Path) -> int:
 
     update_dataset_metadata(metadata_path, pid, manifest, pages)
     (folder / "pages.json").write_text(
-        json.dumps({"pid": pid, "manifest_url": manifest_url, "page_count": len(pages), "pages": pages}, ensure_ascii=False, indent=2) + "\\n",
+        json.dumps({"pid": pid, "manifest_url": manifest_url, "page_count": len(pages), "pages": pages}, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
     if errors:
-        (folder / "errors.txt").write_text("\\n".join(errors) + "\\n", encoding="utf-8")
+        (folder / "errors.txt").write_text("\n".join(errors) + "\n", encoding="utf-8")
         print(f"Completed with {len(errors)} page errors; see {folder / 'errors.txt'}")
+    else:
+        (folder / "errors.txt").unlink(missing_ok=True)
     print(f"Saved/available: {saved}/{len(canvases)} pages in {folder}")
     return 2 if errors else 0
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--pid", required=True, help="NDL digital collection PID, e.g. 851659")
     parser.add_argument("--output", type=Path, default=Path("output"))
-    parser.add_argument("--delay", type=float, default=0.5, help="seconds between image requests")
+    parser.add_argument("--delay", type=float, default=1.5, help="seconds between image requests")
     parser.add_argument("--metadata", type=Path, default=Path("metadata.json"), help="dataset metadata JSON to update")
     args = parser.parse_args()
     if not re.fullmatch(r"[A-Za-z0-9_-]+", args.pid):
         parser.error("PID may contain only letters, digits, underscores, and hyphens")
-    if args.delay < 0.25:
-        parser.error("--delay must be at least 0.25 seconds to pace requests")
+    if args.delay < 0.5:
+        parser.error("--delay must be at least 0.5 seconds to pace requests")
     return download(args.pid, args.output, args.delay, args.metadata)
 
 
