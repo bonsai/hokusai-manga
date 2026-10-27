@@ -181,8 +181,8 @@ def img_tag(name: str, img_dir: str | None, size: str = "80px") -> str:
             f'<div style="width:{size};height:{size};background:#eee;border-radius:6px;'
             f'display:flex;align-items:center;justify-content:center;color:#999;font-size:10px">N/A</div>'
         )
-    w = img_dir.replace("/mnt/c/", "C:/").replace("/", "\\")
-    src = f"{w}/{name}".replace("\\", "/")
+    # Produce relative path for GitHub Pages compatibility
+    src = f"{img_dir}/{name}"
     err = (
         '<div style="width:' + size + ';height:' + size +
         ';background:#ffebee;display:flex;align-items:center;'
@@ -530,6 +530,7 @@ body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Rob
 </div>
 
 <script>
+const D = {plotly_data};
 const L = {plotly_layout};
 
 Plotly.newPlot('chCat', [{{type:'pie', labels:D.cat_labels, values:D.cat_values, hole:.5, marker:{{colors:D.cat_colors}}}}], Object.assign({{showlegend:true, legend:{{font:{{size:11}}}}}}, L));
@@ -644,7 +645,7 @@ def main() -> None:
     args = ap.parse_args()
 
     sd = Path(__file__).resolve().parent
-    dd = sd.parent / "data"
+    dd = sd.parents[2] / "data"
 
     jf = args.jsonl or dd / "hokusai_vlm_reviews.jsonl"
     df = args.db or dd / "hokusai_vlm_reviews.db"
@@ -666,7 +667,7 @@ def main() -> None:
             "_error": True,
         })
 
-    img_dir = str(dd / "images-resized-720")
+    img_dir = "images"
     build_dashboard(all_images, errors, img_dir, args.output, args.title)
 
 

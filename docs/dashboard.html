@@ -74,7 +74,7 @@ body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Robo
 <div class="header">
     <h1>🎨 Hokusai Manga — VLM Review Dashboard</h1>
     <div class="meta">
-        Generated: 2026-10-27 12:28:14
+        Generated: 2026-10-27 13:07:40
         &nbsp;|&nbsp; 114 images
         &nbsp;|&nbsp; Avg Suitability: 6.2/10
     </div>
@@ -157,6 +157,7 @@ body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Robo
 </div>
 
 <script>
+const D = {"cat_labels": ["landscape", "daily_life", "yokai", "animals", "nature", "calligraphy", "figure"], "cat_values": [54, 27, 15, 3, 6, 7, 2], "cat_colors": ["#2e7d32", "#e65100", "#c2185b", "#388e3c", "#1b5e20", "#7b1fa2", "#1565c0"], "suit_labels": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"], "suit_values": [0, 0, 16, 23, 1, 1, 30, 42, 1, 0], "suit_colors": ["#c62828", "#c62828", "#c62828", "#c62828", "#c62828", "#f57f17", "#f57f17", "#2e7d32", "#2e7d32", "#2e7d32"], "qual_labels": ["Line", "Contrast", "Composition", "Artifact Free"], "qual_values": [7.6, 7.07, 6.96, 6.04], "dist_labels": ["8-10 (Good)", "6-7 (Avg)", "0-5 (Poor)"], "dist_values": [43, 31, 40], "dist_colors": ["#2e7d32", "#f57f17", "#c62828"]};
 const L = {"paper_bgcolor": "rgba(0,0,0,0)", "plot_bgcolor": "rgba(0,0,0,0)", "font": {"family": "Inter,sans-serif", "size": 12, "color": "#555"}, "margin": {"t": 10, "b": 30, "l": 40, "r": 20}};
 
 Plotly.newPlot('chCat', [{type:'pie', labels:D.cat_labels, values:D.cat_values, hole:.5, marker:{colors:D.cat_colors}}], Object.assign({showlegend:true, legend:{font:{size:11}}}, L));
