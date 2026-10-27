@@ -1,0 +1,3 @@
+NDL PID: 851659
+Manifest: https://www.dl.ndl.go.jp/api/iiif/851659/manifest.json
+Check the NDL record's rights and access conditions before reuse.
