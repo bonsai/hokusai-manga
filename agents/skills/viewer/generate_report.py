@@ -183,15 +183,16 @@ def img_tag(name: str, img_dir: str | None, size: str = "80px") -> str:
         )
     # Produce relative path for GitHub Pages compatibility
     src = f"{img_dir}/{name}"
+    # Escape double quotes for use inside HTML attribute
     err = (
-        '<div style="width:' + size + ';height:' + size +
+        '<div style=&quot;width:' + size + ';height:' + size +
         ';background:#ffebee;display:flex;align-items:center;'
-        'justify-content:center;color:#c62828;font-size:10px">ERR</div>'
+        'justify-content:center;color:#c62828;font-size:10px&quot;>ERR</div>'
     )
     return (
         f'<img src="{src}" style="width:{size};height:{size};object-fit:cover;'
         f'border-radius:6px;border:1px solid #ddd;" loading="lazy" '
-        f'onerror="this.outerHTML=\'{err}\'">'
+        f"onerror=\"this.outerHTML='{err}'\">"
     )
 
 
