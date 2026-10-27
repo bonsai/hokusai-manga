@@ -1,6 +1,20 @@
+# Python
 __pycache__/
 *.pyc
 *.pyo
 .env
 .vscode/
 .idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Large binary assets (managed via Git LFS or local only)
+assets/
+output/
+dist/
+
+# IDE
+*.swp
+*.swo

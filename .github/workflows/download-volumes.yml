@@ -1,0 +1,101 @@
+name: Download Hokusai Manga Volumes
+
+on:
+  workflow_dispatch:
+    inputs:
+      roll:
+        description: 'Roll number to download (1-15), or "all" for pending volumes'
+        required: false
+        default: 'all'
+      pid:
+        description: 'NDL PID to download directly (overrides roll)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hokusai-manga-download
+  cancel-in-progress: false
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade Pillow pyyaml
+
+      - name: Download pending volumes
+        id: download
+        env:
+          ROLL_INPUT: ${{ github.event.inputs.roll }}
+          PID_INPUT: ${{ github.event.inputs.pid }}
+        shell: bash
+        run: |
+          set +e
+          failed=0
+          SCRIPT="agents/skills/getter/download_rolls.py"
+          ROLLS="agents/skills/getter/rolls.yaml"
+          ASSETS_DIR="assets"
+
+          # Determine which PIDs to download
+          PIDS=""
+          if [ -n "$PID_INPUT" ]; then
+            PIDS="$PID_INPUT"
+            echo "Direct PID download: $PIDS"
+          elif [ "$ROLL_INPUT" = "all" ] || [ -z "$ROLL_INPUT" ]; then
+            echo "Downloading all pending volumes from rolls.yaml..."
+            PIDS=$(python3 -c "
+import yaml
+with open('$ROLLS') as f:
+    data = yaml.safe_load(f)
+for r in data['rolls']:
+    if r['status'] == 'pending':
+        print(r['pid'])
+")
+          else
+            echo "Downloading roll $ROLL_INPUT..."
+            PIDS=$(python3 -c "
+import yaml
+with open('$ROLLS') as f:
+    data = yaml.safe_load(f)
+for r in data['rolls']:
+    if str(r['roll']) == '$ROLL_INPUT' and r['status'] == 'pending':
+        print(r['pid'])
+")
+          fi
+
+          if [ -z "$PIDS" ]; then
+            echo "No pending volumes to download."
+            exit 0
+          fi
+
+          for pid in $PIDS; do
+            echo "::group::Download NDL PID ${pid}"
+            python3 "$SCRIPT" --roll-pid "$pid" --delay 0.75
+            result=$?
+            if [ "$result" -ne 0 ]; then
+              echo "Download errors for PID ${pid}."
+              failed=1
+            fi
+            echo "::endgroup::"
+          done
+
+          echo "download_failed=$failed" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Report results
+        if: steps.download.outputs.download_failed == '1'
+        run: |
+          echo "One or more downloads failed. Check the logs above."
+          exit 1
