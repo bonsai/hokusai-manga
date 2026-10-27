@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Hokusai VLM Review Dashboard — Interactive report with Plotly charts, views, filters.
+View modes: GLANCE, GRID, LIST, GROUP, GRAPH.
 Data source: SQLite/JSONL → embedded JSON + Plotly JS charts.
 No FastAPI required — pure HTML+JS with embedded data.
 """
@@ -10,7 +11,7 @@ import re
 import argparse
 from pathlib import Path
 from datetime import datetime
-from collections import Counter, defaultdict
+from collections import Counter, defaultdict, OrderedDict
 
 # ── JSON extraction helpers ─────────────────────────────────────────────
 
@@ -20,14 +21,12 @@ def extract_json(text: str) -> dict | None:
     text = text.strip()
 
     def _try(t: str) -> dict | None:
-        # 1. direct
         try:
             d = json.loads(t)
             if isinstance(d, dict):
                 return d
         except Exception:
             pass
-        # 2. missing-comma fix  ("val"\n\n  "key" → "val",\n  "key")
         fixed = re.sub(r'(\"|\})\s*\n\s*\"', r'\1,\n"', t)
         try:
             d = json.loads(fixed)
@@ -35,7 +34,6 @@ def extract_json(text: str) -> dict | None:
                 return d
         except Exception:
             pass
-        # 3. ```json ... ```
         m = re.search(r'```(?:json)?\s*({.+?})\s*```', t, re.DOTALL)
         if m:
             for s in [m.group(1), re.sub(r'(\"|\})\s*\n\s*\"', r'\1,\n"', m.group(1))]:
@@ -45,7 +43,6 @@ def extract_json(text: str) -> dict | None:
                         return d
                 except Exception:
                     pass
-        # 4. first-brace
         idx = t.find('{')
         if idx >= 0:
             for s in [t[idx:], re.sub(r'(\"|\})\s*\n\s*\"', r'\1,\n"', t[idx:])]:
@@ -117,7 +114,6 @@ def _load_db(path: Path) -> list[dict]:
 
 
 def load_reviews(jsonl_path: Path, db_path: Path) -> list[dict]:
-    """Try JSONL first, fall back to DB."""
     if jsonl_path.exists():
         r = _load_jsonl(jsonl_path)
         if r:
@@ -161,7 +157,7 @@ def compute_stats(reviews: list[dict]) -> dict:
     med_s = sorted(suits)[len(suits) // 2] if suits else 0
 
     avg_q = {k: round(sum(v) / len(v), 2) for k, v in q.items()}
-    suit_dist: dict[int, int] = dict(Counter(suits))
+    suit_dist = dict(Counter(suits))
 
     return {
         "categories": cats,
@@ -173,7 +169,7 @@ def compute_stats(reviews: list[dict]) -> dict:
     }
 
 
-# ── HTML generation ────────────────────────────────────────────────────
+# ── HTML helpers ──────────────────────────────────────────────────────
 
 def img_tag(name: str, img_dir: str | None, size: str = "80px") -> str:
     if not img_dir:
@@ -181,9 +177,7 @@ def img_tag(name: str, img_dir: str | None, size: str = "80px") -> str:
             f'<div style="width:{size};height:{size};background:#eee;border-radius:6px;'
             f'display:flex;align-items:center;justify-content:center;color:#999;font-size:10px">N/A</div>'
         )
-    # Produce relative path for GitHub Pages compatibility
     src = f"{img_dir}/{name}"
-    # Escape double quotes for use inside HTML attribute
     err = (
         '<div style=&quot;width:' + size + ';height:' + size +
         ';background:#ffebee;display:flex;align-items:center;'
@@ -192,7 +186,7 @@ def img_tag(name: str, img_dir: str | None, size: str = "80px") -> str:
     return (
         f'<img src="{src}" style="width:{size};height:{size};object-fit:cover;'
         f'border-radius:6px;border:1px solid #ddd;" loading="lazy" '
-        f"onerror=\"this.outerHTML='{err}'\">"
+        f"onerror=\\\"this.outerHTML='{err}'\\\">"
     )
 
 
@@ -202,10 +196,6 @@ def _suit_color(s: int) -> str:
     if s >= 6:
         return "#f57f17"
     return "#c62828"
-
-
-def _suit_class(s: int) -> str:
-    return "suit-high" if s >= 8 else "suit-med" if s >= 6 else "suit-low"
 
 
 CAT_CSS = {
@@ -223,6 +213,8 @@ CAT_CSS = {
 }
 
 
+# ── Dashboard builder ──────────────────────────────────────────────────
+
 def build_dashboard(
     all_images: list[dict],
     errors: list[dict],
@@ -232,7 +224,6 @@ def build_dashboard(
 ) -> None:
     total = len(all_images)
     err_count = len(errors)
-    ok = total - err_count
     err_pct = round(err_count / total * 100, 1) if total else 0
 
     stats = compute_stats([i for i in all_images if not i.get("_error")])
@@ -253,7 +244,6 @@ def build_dashboard(
         qs = f"{lq.get('linework','')}/{lq.get('contrast','')}/{lq.get('composition','')}/{lq.get('artifact_free','')}"
         subj = (r.get("subject") or "")[:80]
         clr = _suit_color(suit)
-        sc = _suit_class(suit)
         border = 'border:2px solid #e74c3c' if is_err else ""
         cards_html += (
             f'<div class="img-card" data-i="{i}" data-cat="{cat}" data-suit="{suit}" data-name="{r["image"]}" style="{border}">'
@@ -261,7 +251,7 @@ def build_dashboard(
             f'<div style="padding:0 10px 10px">'
             f'<div style="font-weight:bold;font-size:11px;margin-bottom:4px">{r["image"]}</div>'
             f'<div style="font-size:10px;color:#7f8c8d;margin-bottom:4px;max-height:28px;overflow:hidden">{subj}</div>'
-            f'<span class="cat-badge" style="background:{CAT_CSS.get(cat,'#eee')};color:{clr}">{cat.replace("_"," ").title()}</span>'
+            f'<span class="cat-badge" style="background:{CAT_CSS.get(cat,"#eee")};color:{clr}">{cat.replace("_"," ").title()}</span>'
             f'<div style="font-size:16px;font-weight:bold;color:{clr};text-align:center;margin:6px 0">{suit}/10</div>'
             f'<div style="font-size:10px;color:#95a5a6;text-align:center">Q: {qs}</div>'
             f'</div></div>'
@@ -322,26 +312,50 @@ def build_dashboard(
                 f'<div style="background:#fff3e0;border-radius:8px;padding:10px;text-align:center">'
                 f'{img_tag(e["image"], img_dir, "120px")}'
                 f'<div style="font-weight:bold;font-size:12px;margin:5px 0;color:#c62828">{e["image"]}</div>'
-                f'<div style="font-size:11px;color:#795548">{(e.get("error") or "")[:150]}</div></div>'
+                f'<div style="font-size:11px;color:#795548">{e.get("error") or ""[:150]}</div></div>'
             )
 
+    # ── Grouped by category HTML ──
+    grouped = OrderedDict()
+    for r in all_images:
+        c = r.get("category", "unknown")
+        grouped.setdefault(c, []).append(r)
+    group_html = ""
+    for cat, items in grouped.items():
+        clr = CAT_CSS.get(cat, "#757575")
+        group_html += (
+            f'<div style="margin-bottom:20px">'
+            f'<div style="background:{clr};color:#fff;padding:6px 12px;border-radius:6px;font-weight:600;font-size:13px">'
+            f'{cat.replace("_", " ").title()} ({len(items)})</div>'
+            f'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;padding:10px">'
+        )
+        for r in items:
+            suit = r.get("training_suitability", 0)
+            subj = (r.get("subject") or "")[:60]
+            sc = _suit_color(suit)
+            group_html += (
+                f'<div style="background:#fff;border:1px solid #ddd;border-radius:6px;padding:8px;text-align:center">'
+                f'{img_tag(r["image"], img_dir, "100px")}'
+                f'<div style="font-size:10px;font-weight:bold;margin-top:4px">{r["image"]}</div>'
+                f'<div style="font-size:9px;color:#666;margin-top:2px">{subj}</div>'
+                f'<div style="font-size:11px;color:{sc};font-weight:bold;margin-top:4px">{suit}/10</div>'
+                f'</div>'
+            )
+        group_html += "</div></div>"
+
     # ── plotly chart data ──
-    # Category doughnut
     cat_labels = list(stats["categories"].keys())
     cat_values = list(stats["categories"].values())
     cat_colors = [CAT_CSS.get(c, "#999") for c in cat_labels]
 
-    # Suitability histogram
     suit_labels = [str(s) for s in range(1, 11)]
     suit_colors = ["#2e7d32" if s >= 8 else "#f57f17" if s >= 6 else "#c62828" for s in range(1, 11)]
     suit_values = [stats["suit_dist"].get(s, 0) for s in range(1, 11)]
 
-    # Quality radar
     qual_keys = ["linework", "contrast", "composition", "artifact_free"]
     qual_labels = ["Line", "Contrast", "Composition", "Artifact Free"]
     qual_values = [round(stats["quality"].get(k, 0), 2) for k in qual_keys]
 
-    # Distribution pie (suitability ranges)
     dist_labels, dist_values, dist_colors = [], [], []
     for lo, hi, label, color in [(8, 10, "8-10 (Good)", "#2e7d32"), (6, 7, "6-7 (Avg)", "#f57f17"), (0, 5, "0-5 (Poor)", "#c62828")]:
         cnt = sum(v for k, v in stats["suit_dist"].items() if lo <= k <= hi)
@@ -364,7 +378,6 @@ def build_dashboard(
         "dist_colors": dist_colors,
     })
 
-    # Layout template for JS (use PLACEHOLDER_LAYOUT)
     plotly_layout = json.dumps({
         "paper_bgcolor": "rgba(0,0,0,0)",
         "plot_bgcolor": "rgba(0,0,0,0)",
@@ -419,11 +432,20 @@ body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Rob
 
 .info {{ font-size: 12px; color: #999; margin-bottom: 12px; }}
 
+/* Glance */
+.glance {{ background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 1px 6px rgba(0,0,0,.08); margin-bottom: 20px; }}
+.glance h3 {{ margin-top: 0; }}
+
+/* Group */
+.grp {{ background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 1px 6px rgba(0,0,0,.08); margin-bottom: 20px; }}
+
+/* Graph */
+.graph {{ background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 1px 6px rgba(0,0,0,.08); margin-bottom: 20px; }}
+
 /* Grid view */
 .gv {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; margin-bottom: 20px; }}
-.ic {{ background: #fff; border-radius: 10px; box-shadow: 0 1px 6px rgba(0,0,0,.08); transition: transform .2s, box-shadow .2s; overflow: hidden; }}
-.ic:hover {{ transform: translateY(-3px); box-shadow: 0 6px 16px rgba(0,0,0,.12); }}
-.cb {{ display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; text-transform: uppercase; }}
+.img-card {{ background: #fff; border-radius: 10px; box-shadow: 0 1px 6px rgba(0,0,0,.08); overflow: hidden; transition: transform .2s; }}
+.img-card:hover {{ transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,.12); }}
 
 /* List */
 .lv, .tv {{ background: #fff; border-radius: 12px; box-shadow: 0 1px 6px rgba(0,0,0,.08); overflow: hidden; margin-bottom: 20px; }}
@@ -456,26 +478,32 @@ body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Rob
 
 <div class="c">
 
-    <!-- Stats -->
-    <div class="sgrid">
-        <div class="sc"><div class="lbl">Total Images</div><div class="val">{stats["total"]}</div><div class="sub">images</div></div>
-        <div class="sc"><div class="lbl">Avg Suitability</div><div class="val">{stats["avg_suitability"]}</div><div class="sub">/10 ({stats["median_suitability"]} median)</div></div>
-        <div class="sc"><div class="lbl">Categories</div><div class="val">{len(stats["categories"])}</div><div class="sub">distinct</div></div>
-        <div class="sc"><div class="lbl">Linework</div><div class="val">{stats["quality"].get("linework",0):.1f}</div><div class="sub">/10 avg</div></div>
-        <div class="sc err"><div class="lbl">Errors</div><div class="val">{err_count}</div><div class="sub">{err_pct}% timeout / unparseable</div></div>
-    </div>
-
-    <!-- Plotly charts -->
-    <div class="cgrid">
-        <div class="cc"><h3>🍩 Category Distribution</h3><div id="chCat" style="height:320px"></div></div>
-        <div class="cc"><h3>📊 Suitability Histogram</h3><div id="chSuit" style="height:320px"></div></div>
-        <div class="cc"><h3>🎯 LoRA Quality Radar</h3><div id="chQual" style="height:320px"></div></div>
-        <div class="cc"><h3>🥧 Suitability Ranges</h3><div id="chDist" style="height:320px"></div></div>
+    <!-- GLANCE View: Summary + stats + sample cards -->
+    <div class="glance" id="glance">
+        <h3 style="color:#1a237e;margin-bottom:12px">📊 Dataset Overview</h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-bottom:20px">
+            <div class="sc"><div class="lbl">Total Images</div><div class="val">{stats["total"]}</div><div class="sub">annotated images</div></div>
+            <div class="sc"><div class="lbl">Avg Suitability</div><div class="val">{stats["avg_suitability"]}</div><div class="sub">/10 ({stats["median_suitability"]} median)</div></div>
+            <div class="sc"><div class="lbl">Categories</div><div class="val">{len(stats["categories"])}</div><div class="sub">distinct types</div></div>
+            <div class="sc"><div class="lbl">Linework</div><div class="val">{stats["quality"].get("linework",0):.1f}</div><div class="sub">/10 avg quality</div></div>
+            <div class="sc err"><div class="lbl">Errors</div><div class="val">{err_count}</div><div class="sub">{err_pct}% timeout/unparseable</div></div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px">
+            {cards_html}
+        </div>
     </div>
 
     <!-- Controls -->
     <div class="ctrls">
-        <label>Sort</label>
+        <label>VIEW</label>
+        <div class="vtog">
+            <button id="bGlance" class="on" onclick="setView('glance')">👁 Glance</button>
+            <button id="bGrid" onclick="setView('grid')">☷ Grid</button>
+            <button id="bList" onclick="setView('list')">☰ List</button>
+            <button id="bGroup" onclick="setView('group')">📁 Group</button>
+            <button id="bGraph" onclick="setView('graph')">📈 Graph</button>
+        </div>
+        <label style="margin-left:16px">Sort</label>
         <select id="selSort" onchange="apply()">
             <option value="sD">Suitability ↓</option>
             <option value="sA">Suitability ↑</option>
@@ -497,17 +525,12 @@ body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Rob
         </select>
         <button onclick="reset()">Reset</button>
         <button onclick="errorsOnly()">Errors Only</button>
-        <div class="vtog">
-            <button id="bG" class="on" onclick="setView('grid')">☷ Grid</button>
-            <button id="bL" onclick="setView('list')">☰ List</button>
-            <button id="bT" onclick="setView('toggle')">📋 Toggle</button>
-        </div>
     </div>
 
     <div class="info" id="info">Showing 0 / {stats["total"]}</div>
 
     <!-- Grid -->
-    <div class="gv" id="gv">{cards_html}</div>
+    <div class="gv hidden" id="gv">{cards_html}</div>
 
     <!-- List -->
     <div class="lv hidden" id="lv">
@@ -517,7 +540,22 @@ body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Rob
         </table>
     </div>
 
-    <!-- Toggle -->
+    <!-- Grouped by Category -->
+    <div class="grp hidden" id="grp">{group_html}</div>
+
+    <!-- Graph / Charts Focus -->
+    <div class="graph hidden" id="graph">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(400px,1fr));gap:20px;margin-bottom:20px">
+            <div class="cc"><h3>🍩 Category Distribution</h3><div id="chCat" style="height:400px"></div></div>
+            <div class="cc"><h3>📊 Suitability Histogram</h3><div id="chSuit" style="height:400px"></div></div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(400px,1fr));gap:20px">
+            <div class="cc"><h3>🎯 LoRA Quality Radar</h3><div id="chQual" style="height:400px"></div></div>
+            <div class="cc"><h3>🥧 Suitability Ranges</h3><div id="chDist" style="height:400px"></div></div>
+        </div>
+    </div>
+
+    <!-- Toggle Detail (for List view) -->
     <div class="tv hidden" id="tv">
         <table>
             <thead><tr><th></th><th>Image</th><th>Subject</th><th>Category</th><th>Suitability</th><th>Quality</th><th>Notes</th></tr></thead>
@@ -544,13 +582,12 @@ Plotly.newPlot('chDist', [{{type:'pie', labels:D.dist_labels, values:D.dist_valu
 
 // ── View toggle ──
 function setView(v) {{
-    document.getElementById('gv').classList.toggle('hidden', v!=='grid');
-    document.getElementById('lv').classList.toggle('hidden', v!=='list');
-    document.getElementById('tv').classList.toggle('hidden', v!=='toggle');
+    const views = ['glance','grid','list','group','graph','tv'];
+    views.forEach(n => document.getElementById(n).classList.add('hidden'));
+    document.getElementById(v).classList.remove('hidden');
     document.querySelectorAll('.vtog button').forEach(b=>b.classList.remove('on'));
-    (v==='grid'&&document.getElementById('bG'))||
-    (v==='list'&&document.getElementById('bL'))||
-    (v==='toggle'&&document.getElementById('bT'));
+    const idMap = {{glance:'bGlance',grid:'bGrid',list:'bList',group:'bGroup',graph:'bGraph'}};
+    if(idMap[v]) document.getElementById(idMap[v]).classList.add('on');
     apply();
 }}
 
@@ -569,7 +606,7 @@ function apply() {{
     const catF = document.getElementById('selCat').value;
     const suitF = document.getElementById('selSuit').value;
 
-    const cards = [...document.querySelectorAll('.ic')];
+    const cards = [...document.querySelectorAll('.img-card')];
     const rows = [...document.querySelectorAll('.lrow')];
 
     // Filter
@@ -588,7 +625,7 @@ function apply() {{
     show(rows);
 
     // Sort — collect visible then re-append
-    const doSort = (els, key) => {{
+    const doSort = (els) => {{
         const vis = els.filter(e => e.style.display !== 'none');
         vis.sort((a, b) => {{
             switch(sort) {{
@@ -600,9 +637,9 @@ function apply() {{
                 default: return 0;
             }}
         }});
-        const parent = els[0].parentNode;
+        const parent = els[0]?.parentNode;
+        if(!parent) return;
         vis.forEach(e => parent.appendChild(e));
-        // Hide detail rows after sort
         document.querySelectorAll('.detail-row').forEach(dr => dr.style.display = 'none');
         document.querySelectorAll('.lrow').forEach(lr => {{ const nxt = lr.nextElementSibling; if(nxt?.classList?.contains('detail-row')) nxt.style.display='none'; }});
         document.querySelectorAll('.lrow').forEach(lr => lr.querySelector('td') && (lr.querySelector('td').textContent='▶'));
@@ -612,14 +649,14 @@ function apply() {{
     doSort(rows);
 
     document.getElementById('info').textContent =
-        `Showing ${{cards.filter(e=>e.style.display!=='none').length}} / ${{stats["total"]}}`;
+        `$Showing ${{cards.filter(e=>e.style.display!=='none').length}} / ${{stats["total"]}}`;
 }}
 
 function reset() {{
     document.getElementById('selSort').value = 'sD';
     document.getElementById('selCat').value = '';
     document.getElementById('selSuit').value = '';
-    setView('grid');
+    setView('glance');
 }}
 
 function errorsOnly() {{
