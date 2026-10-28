@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Recap — Hokusai Manga Dataset</title>
+<style>
+  :root { --brand:#3949ab; --brand2:#1a237e; --text:#243044; --muted:#7b8794; --line:#e3e7ee; --ok:#2e7d32; --warn:#f57f17; --err:#c62828; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:#f0f2f5; color:var(--text); font:14px/1.7 system-ui,-apple-system,"Segoe UI",sans-serif; }
+  header { background:linear-gradient(135deg,var(--brand2),var(--brand)); color:#fff; padding:22px 24px; }
+  header h1 { margin:0; font-size:22px; }
+  header p { margin:4px 0 0; font-size:12px; opacity:.85; }
+  header a { color:#fff; }
+  main { max-width:900px; margin:0 auto; padding:20px; }
+  section { background:#fff; border-radius:14px; padding:18px 20px; box-shadow:0 1px 6px rgba(0,0,0,.08); margin-bottom:16px; }
+  h2 { font-size:15px; color:var(--brand2); margin:0 0 10px; }
+  h3 { font-size:13px; color:var(--muted); text-transform:uppercase; letter-spacing:.4px; margin:16px 0 6px; }
+  ul { margin:6px 0 0; padding-left:20px; }
+  li { margin:4px 0; }
+  code { background:#f4f6fa; border:1px solid var(--line); border-radius:5px; padding:1px 5px; font-size:12px; }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; margin-top:8px; }
+  th, td { text-align:left; padding:7px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:600; font-size:11px; text-transform:uppercase; }
+  .pill { display:inline-block; padding:2px 9px; border-radius:999px; font-size:11px; font-weight:700; color:#fff; }
+  .ok { background:var(--ok); } .warn { background:var(--warn); color:#3a2600; } .err { background:var(--err); }
+  .muted { color:var(--muted); font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <a href="index.html">← Landing</a>
+  <h1>🧭 Recap — ダッシュボード完成とブランチ統合</h1>
+  <p>2026-10-28 セッションの作業サマリ · <a href="dashboard.html">ダッシュボード</a> · <a href="#next">次にやること</a></p>
+</header>
+<main>
+
+<section>
+  <h2>1. ダッシュボードを完成させた</h2>
+  <p class="muted">VLMサーバーなし・既存の注釈データ（114枚 / 8件のエラー）だけで完結するようにした。</p>
+  <ul>
+    <li><strong>完全オフライン化</strong> — <code>docs/plotly.min.js</code>（4.6MB）を plotly.py から出力し、<code>docs/dashboard.html</code> は相対参照。<strong>外部リクエスト0件</strong>、<code>file://</code> でも GitHub Pages でも動作。<code>--plotly-cdn</code> で従来動作も選択可。</li>
+    <li><strong>検索を追加</strong> — 1つの検索ボックスで 画像名 / 主被写体 / メモ を横断検索。Grid・List・Group に適用、<code>/</code> でフォーカス、Reset でクリア。</li>
+    <li><strong>レイアウト修正</strong> — コントロールバーを全ビューの最上部へ移動（Glance では下に落ちていた）。Glance の冗長な件数行を非表示。</li>
+    <li><strong>ヘッダー情報</strong> — <code>114 images / 8 errors | 4 volumes | 10 tags | Avg 6.2/10</code>。</li>
+    <li><strong>円グラフ</strong> — 4%未満のスライスのラベルを出さず重なりを解消。ホバーで枚数と割合を表示。</li>
+  </ul>
+  <h3>検証（Headless Chrome + CDP）</h3>
+  <table>
+    <tr><th>項目</th><th>結果</th></tr>
+    <tr><td>JS エラー</td><td><span class="pill ok">0</span></td></tr>
+    <tr><td>外部リクエスト</td><td><span class="pill ok">0</span></td></tr>
+    <tr><td>チャート描画</td><td>18（Graph タブ6図）</td></tr>
+    <tr><td>画像読み込み失敗</td><td>0 / 494</td></tr>
+    <tr><td>タブ</td><td>glance / grid / list / group / graph / tags / network すべて OK</td></tr>
+    <tr><td>フィルタ</td><td>landscape 54/122 · Errors 8/122</td></tr>
+    <tr><td>検索</td><td><code>yokai</code> 7件 · <code>turtle</code> 1件</td></tr>
+    <tr><td>FastAPI</td><td><code>/</code> 200 · <code>/static/plotly.min.js</code> 200 · <code>/demo/*.png</code> 200</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>2. デモ用スクリーンショット（3枚）</h2>
+  <ul>
+    <li><code>docs/demo/dashboard-overview.png</code> — Glance（KPI + 高評価サンプル）</li>
+    <li><code>docs/demo/dashboard-graph.png</code> — Graph（6図すべて）</li>
+    <li><code>docs/demo/dashboard-sequence.png</code> — 順番に見る（詳細・前/次・読み上げ・2/122）</li>
+  </ul>
+  <p class="muted"><code>docs/index.html</code> に掲載。撮影は Headless Chrome + CDP（<code>local/_demo_shots.mjs</code>, <code>local/_demo_seq.mjs</code>）。</p>
+</section>
+
+<section>
+  <h2>3. VLM テストの準備</h2>
+  <ul>
+    <li><code>agents/skills/reviewer/test_vlm_skill.py</code> — 接続確認 → 単一画像 → バッチ → JSONL 追記（<code>--limit</code>, <code>--prompt jp|en</code>, <code>--model</code>）。</li>
+    <li>実行例: <code>python agents/skills/reviewer/test_vlm_skill.py --limit 3 --prompt jp</code></li>
+    <li>LM Studio 側のモデルは全削除済み。VLM を試すには Vision モデルの再取得が必要（<code>lms get qwen/qwen2.5-vl-7b</code> など）。</li>
+    <li>カメラ経路は <code>/vlm</code>（<code>localhost:3002/vlm</code>）で維持。VLM 未接続時は <code>VLM未接続</code> を表示。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>4. ブランチ統合（PR #1: feat/one-volume-at-a-time）</h2>
+  <p class="muted">main へマージ。コンフリクトは現行レイアウトに合わせて解消した。</p>
+  <table>
+    <tr><th>対象</th><th>対応</th></tr>
+    <tr><td><code>download-one-volume.yml</code></td><td>1巻ずつ実行するワークフローを採用。<code>agents/skills/getter/download_ndl_iiif.py</code>, <code>assets/</code>, <code>docs/data/metadata.json</code> に合わせ、actions を v4/v5 に固定。</td></tr>
+    <tr><td><code>package-collected-volumes.yml</code></td><td>新規。run ID を指定して volume artifact を結合 → LoRA ZIP。パスを <code>assets/</code> に適応。</td></tr>
+    <tr><td><code>download_ndl_iiif.py</code></td><td>堅牢化版（画像シグネチャ検証・Referer/Accept 付与・manifest失敗を <code>errors.txt</code> に記録・壊れたローカルファイルは再取得・<code>content_type</code> 記録）。既定 <code>--output assets</code>、<code>--delay 1.5</code>（下限 0.5）。</td></tr>
+    <tr><td><code>README.md</code></td><td>現行構成を維持しつつ、1巻ずつの運用手順・Kanban・結合手順・トラブルシュートを統合。</td></tr>
+    <tr><td>ルート <code>index.html</code></td><td>旧リダイレクトは破棄（Pages は <code>docs/index.html</code>）。</td></tr>
+  </table>
+  <h3>ついでに直したバグ</h3>
+  <p><span class="pill err">bug</span> <code>download-volumes.yml</code> が <strong>不正な YAML</strong> だった。インラインの <code>python3 -c "</code> ブロックが行頭（カラム0）から始まり <code>run: |</code> ブロックスカラーを終端させていたため、ワークフローが解析不能だった。インデント済みヒアドキュメントに置換し、全ワークフローが <code>yaml.safe_load</code> を通ることを確認。</p>
+</section>
+
+<section>
+  <h2>5. 現在のデータ状態</h2>
+  <ul>
+    <li>注釈: 114枚（JSONL 252行 + SQLite）、うち 8件がエラー（タイムアウト/解析不能）。</li>
+    <li>巻: Vol 1–4 のみ（Vol 5–15 は未取得）。Kanban 上は Vol 2 が Doing、他は To do。</li>
+    <li>カテゴリ: landscape 54 / daily_life 27 / yokai 15 / calligraphy 7 / nature 6 / animals 3 / figure 2。</li>
+    <li>品質平均: linework 7.6 / contrast 7.1 / composition 7.0 / artifact-free 6.0。</li>
+  </ul>
+</section>
+
+<section id="next">
+  <h2>6. 次にやること</h2>
+  <ol>
+    <li>VLM テスト用の Issue を作成（テンプレ: 環境変数・モデル・実行コマンド・期待する JSONL スキーマ・完了条件）。</li>
+    <li>Vision モデルを再取得して <code>test_vlm_skill.py</code> を実走（1枚 → 3枚 → バッチ）。</li>
+    <li>8件のエラーを再注釈（Issue #3 と対応）。</li>
+    <li>Vol 5–15 を1巻ずつ取得し、Kanban を更新（Issue #11 の整合性検証と併走）。</li>
+    <li>VLM 出力の <code>category</code> 正規化と <code>tags</code> 配列導入（Issue #5）。</li>
+  </ol>
+  <p class="muted">関連 Issue: #2（plotly セルフホスト → 本セッションで実装済み）、#3, #4, #5, #11。</p>
+</section>
+
+</main>
+</body>
+</html>

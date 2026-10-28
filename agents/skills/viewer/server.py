@@ -148,6 +148,16 @@ def volume_viewer() -> HTMLResponse:
     return HTMLResponse((DOCS_DIR / "viewer.html").read_text(encoding="utf-8"))
 
 
+@app.get("/recap", response_class=HTMLResponse)
+@app.get("/recap.html", response_class=HTMLResponse)
+def recap_page() -> HTMLResponse:
+    """Session recap page (static in docs/, also served by GitHub Pages)."""
+    path = DOCS_DIR / "recap.html"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="recap.html not found")
+    return HTMLResponse(path.read_text(encoding="utf-8"))
+
+
 @app.get("/static/plotly.min.js")
 def plotly_js() -> Response:
     return Response(
