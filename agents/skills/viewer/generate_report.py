@@ -212,23 +212,118 @@ CAT_CSS = {
     "error": "#c62828",
 }
 
+# Plotly 2.27 does not try to load maplibre CSS from unpkg.com.
+PLOTLY_JS_CDN = "https://cdn.plot.ly/plotly-2.27.0.min.js"
+
+
+def _fig_html(fig, div_id: str) -> str:
+    """Render a plotly.py figure to an embeddable div + init script."""
+    import plotly.io as pio
+
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font={"family": "Inter,sans-serif", "size": 12, "color": "#555"},
+        margin={"t": 20, "b": 40, "l": 50, "r": 20},
+        height=400,
+        autosize=True,
+    )
+    return pio.to_html(
+        fig,
+        full_html=False,
+        include_plotlyjs=False,
+        div_id=div_id,
+        config={"responsive": True, "displayModeBar": False},
+    )
+
+
+def build_figures(
+    stats: dict,
+    tag_labels: list[str],
+    tag_values: list[int],
+    tag_colors: list[str],
+    vol_labels: list[str],
+    vol_values: list[int],
+) -> dict[str, str]:
+    """Build all dashboard charts with plotly.py (no client-side chart code)."""
+    import plotly.graph_objects as go
+
+    cat_labels = list(stats["categories"].keys())
+    cat_values = list(stats["categories"].values())
+    cat_colors = [CAT_CSS.get(c, "#999") for c in cat_labels]
+
+    suit_labels = [str(s) for s in range(1, 11)]
+    suit_colors = ["#2e7d32" if s >= 8 else "#f57f17" if s >= 6 else "#c62828" for s in range(1, 11)]
+    suit_values = [stats["suit_dist"].get(s, 0) for s in range(1, 11)]
+
+    qual_keys = ["linework", "contrast", "composition", "artifact_free"]
+    qual_labels = ["Line", "Contrast", "Composition", "Artifact Free"]
+    qual_values = [round(stats["quality"].get(k, 0), 2) for k in qual_keys]
+
+    dist_labels, dist_values, dist_colors = [], [], []
+    for lo, hi, label, color in [(8, 10, "8-10 (Good)", "#2e7d32"), (6, 7, "6-7 (Avg)", "#f57f17"), (0, 5, "0-5 (Poor)", "#c62828")]:
+        cnt = sum(v for k, v in stats["suit_dist"].items() if lo <= k <= hi)
+        if cnt:
+            dist_labels.append(label)
+            dist_values.append(cnt)
+            dist_colors.append(color)
+
+    fig_cat = go.Figure(go.Pie(
+        labels=cat_labels, values=cat_values, hole=0.5,
+        marker={"colors": cat_colors},
+    ))
+    fig_cat.update_layout(showlegend=True, legend={"font": {"size": 11}})
+
+    fig_suit = go.Figure(go.Bar(
+        x=suit_labels, y=suit_values, marker_color=suit_colors,
+        text=suit_values, textposition="auto",
+    ))
+    fig_suit.update_layout(xaxis={"title": "Suitability"}, yaxis={"title": "Count", "rangemode": "tozero"})
+
+    fig_qual = go.Figure(go.Scatterpolar(
+        r=qual_values + qual_values[:1],
+        theta=qual_labels + qual_labels[:1],
+        fill="toself", fillcolor="rgba(57,73,171,.15)",
+        line={"color": "#3949ab"},
+    ))
+    fig_qual.update_layout(polar={"radialaxis": {"range": [0, 10]}})
+
+    fig_dist = go.Figure(go.Pie(
+        labels=dist_labels, values=dist_values, hole=0.45,
+        marker={"colors": dist_colors},
+    ))
+    fig_dist.update_layout(showlegend=True, legend={"font": {"size": 11}})
+
+    fig_vol = go.Figure(go.Bar(
+        x=vol_labels, y=vol_values, marker_color="#3949ab",
+        text=vol_values, textposition="auto",
+    ))
+    fig_vol.update_layout(xaxis={"title": "Volume"}, yaxis={"title": "Images", "rangemode": "tozero"})
+
+    fig_tag = go.Figure(go.Bar(
+        x=tag_values, y=tag_labels, orientation="h",
+        marker_color=tag_colors, text=tag_values, textposition="auto",
+    ))
+    fig_tag.update_layout(
+        margin={"l": 120, "r": 20, "t": 20, "b": 40},
+        xaxis={"title": "Images", "rangemode": "tozero"},
+        yaxis={"automargin": True},
+    )
+
+    return {
+        "cat": _fig_html(fig_cat, "chCat"),
+        "suit": _fig_html(fig_suit, "chSuit"),
+        "qual": _fig_html(fig_qual, "chQual"),
+        "dist": _fig_html(fig_dist, "chDist"),
+        "vol": _fig_html(fig_vol, "chVol"),
+        "tag": _fig_html(fig_tag, "chTag"),
+    }
+
 
 # ── Dashboard builder ──────────────────────────────────────────────────
 
-def build_dashboard(
-    all_images: list[dict],
-    errors: list[dict],
-    img_dir: str,
-    output: Path,
-    title: str = "Hokusai Dashboard",
-) -> None:
-    total = len(all_images)
-    err_count = len(errors)
-    err_pct = round(err_count / total * 100, 1) if total else 0
-
-    stats = compute_stats([i for i in all_images if not i.get("_error")])
-
-    # ── metadata aggregates (tags / volumes) ──
+def collect_meta(all_images: list[dict]) -> tuple[Counter, Counter, list[dict]]:
+    """Return tag counts, volume counts, and per-image detail records."""
     tag_counts: Counter = Counter()
     vol_counts: Counter = Counter()
     detail_data: list[dict] = []
@@ -251,6 +346,43 @@ def build_dashboard(
             "error": bool(r.get("_error")),
             "raw": r.get("_raw_response") or "",
         })
+    return tag_counts, vol_counts, detail_data
+
+
+def load_all_images(jsonl_path: Path, db_path: Path) -> tuple[list[dict], list[dict]]:
+    """Load reviews and timeout errors into the same ordering used by the dashboard."""
+    reviews = load_reviews(jsonl_path, db_path)
+    errors = load_errors(db_path) if db_path.exists() else []
+    all_images = list(reviews)
+    for e in errors:
+        all_images.append({
+            "image": e["image"],
+            "subject": "⚠️ TIMEOUT",
+            "category": "error",
+            "training_suitability": 0,
+            "lora_quality": {},
+            "notes": e.get("error") or "Read timed out",
+            "_error": True,
+        })
+    return all_images, errors
+
+
+def build_dashboard(
+    all_images: list[dict],
+    errors: list[dict],
+    img_dir: str,
+    output: Path | None,
+    title: str = "Hokusai Dashboard",
+    plotly_js: str = PLOTLY_JS_CDN,
+) -> str:
+    total = len(all_images)
+    err_count = len(errors)
+    err_pct = round(err_count / total * 100, 1) if total else 0
+
+    stats = compute_stats([i for i in all_images if not i.get("_error")])
+
+    # ── metadata aggregates (tags / volumes) ──
+    tag_counts, vol_counts, detail_data = collect_meta(all_images)
 
     tag_labels = [t for t, _ in tag_counts.most_common()]
     tag_values = [tag_counts[t] for t in tag_labels]
@@ -381,52 +513,7 @@ def build_dashboard(
             )
         group_html += "</div></div>"
 
-    # ── plotly chart data ──
-    cat_labels = list(stats["categories"].keys())
-    cat_values = list(stats["categories"].values())
-    cat_colors = [CAT_CSS.get(c, "#999") for c in cat_labels]
-
-    suit_labels = [str(s) for s in range(1, 11)]
-    suit_colors = ["#2e7d32" if s >= 8 else "#f57f17" if s >= 6 else "#c62828" for s in range(1, 11)]
-    suit_values = [stats["suit_dist"].get(s, 0) for s in range(1, 11)]
-
-    qual_keys = ["linework", "contrast", "composition", "artifact_free"]
-    qual_labels = ["Line", "Contrast", "Composition", "Artifact Free"]
-    qual_values = [round(stats["quality"].get(k, 0), 2) for k in qual_keys]
-
-    dist_labels, dist_values, dist_colors = [], [], []
-    for lo, hi, label, color in [(8, 10, "8-10 (Good)", "#2e7d32"), (6, 7, "6-7 (Avg)", "#f57f17"), (0, 5, "0-5 (Poor)", "#c62828")]:
-        cnt = sum(v for k, v in stats["suit_dist"].items() if lo <= k <= hi)
-        if cnt:
-            dist_labels.append(label)
-            dist_values.append(cnt)
-            dist_colors.append(color)
-
-    plotly_data = json.dumps({
-        "cat_labels": cat_labels,
-        "cat_values": cat_values,
-        "cat_colors": cat_colors,
-        "suit_labels": suit_labels,
-        "suit_values": suit_values,
-        "suit_colors": suit_colors,
-        "qual_labels": qual_labels,
-        "qual_values": qual_values,
-        "dist_labels": dist_labels,
-        "dist_values": dist_values,
-        "dist_colors": dist_colors,
-        "tag_labels": tag_labels,
-        "tag_values": tag_values,
-        "tag_colors": tag_colors,
-        "vol_labels": vol_labels,
-        "vol_values": vol_values,
-    })
-
-    plotly_layout = json.dumps({
-        "paper_bgcolor": "rgba(0,0,0,0)",
-        "plot_bgcolor": "rgba(0,0,0,0)",
-        "font": {"family": "Inter,sans-serif", "size": 12, "color": "#555"},
-        "margin": {"t": 10, "b": 30, "l": 40, "r": 20},
-    })
+    figures = build_figures(stats, tag_labels, tag_values, tag_colors, vol_labels, vol_values)
 
     extra_css = """
 /* Tag view */
@@ -627,7 +714,7 @@ document.addEventListener('keydown', e => {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{title}</title>
-<script src="https://cdn.plot.ly/plotly-2.35.0.min.js" charset="utf-8"></script>
+<script src="{plotly_js}" charset="utf-8"></script>
 <style>
 * {{ box-sizing: border-box; margin: 0; padding: 0; }}
 body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; color: #333; }}
@@ -790,16 +877,16 @@ body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Rob
     <!-- Graph / Charts Focus -->
     <div class="graph hidden" id="graph">
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(400px,1fr));gap:20px;margin-bottom:20px">
-            <div class="cc"><h3>🍩 Category Distribution</h3><div id="chCat" style="height:400px"></div></div>
-            <div class="cc"><h3>📊 Suitability Histogram</h3><div id="chSuit" style="height:400px"></div></div>
+            <div class="cc"><h3>🍩 Category Distribution</h3>{figures["cat"]}</div>
+            <div class="cc"><h3>📊 Suitability Histogram</h3>{figures["suit"]}</div>
         </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(400px,1fr));gap:20px">
-            <div class="cc"><h3>🎯 LoRA Quality Radar</h3><div id="chQual" style="height:400px"></div></div>
-            <div class="cc"><h3>🥧 Suitability Ranges</h3><div id="chDist" style="height:400px"></div></div>
+            <div class="cc"><h3>🎯 LoRA Quality Radar</h3>{figures["qual"]}</div>
+            <div class="cc"><h3>🥧 Suitability Ranges</h3>{figures["dist"]}</div>
         </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(400px,1fr));gap:20px;margin-top:20px">
-            <div class="cc"><h3>📚 Volume Distribution</h3><div id="chVol" style="height:400px"></div></div>
-            <div class="cc"><h3>🏷 Tag Distribution</h3><div id="chTag" style="height:400px"></div></div>
+            <div class="cc"><h3>📚 Volume Distribution</h3>{figures["vol"]}</div>
+            <div class="cc"><h3>🏷 Tag Distribution</h3>{figures["tag"]}</div>
         </div>
     </div>
 
@@ -831,23 +918,9 @@ body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Rob
 </div>
 
 <script>
-const D = {plotly_data};
-const L = {plotly_layout};
 const DATA = {detail_json};
 const IMG = {img_json};
 const CC = {cat_json};
-
-Plotly.newPlot('chCat', [{{type:'pie', labels:D.cat_labels, values:D.cat_values, hole:.5, marker:{{colors:D.cat_colors}}}}], Object.assign({{showlegend:true, legend:{{font:{{size:11}}}}}}, L));
-
-Plotly.newPlot('chSuit', [{{type:'bar', x:D.suit_labels, y:D.suit_values, marker:{{color:D.suit_colors}}, text:D.suit_values, textposition:'auto', textfont:{{size:11}}}}], Object.assign({{yaxis:{{title:'Count', range:[0,'auto']}}}}, L));
-
-Plotly.newPlot('chQual', [{{type:'radar', labels:D.qual_labels, values:D.qual_values, fill:'toself', fillcolor:'rgba(57,73,171,.15)', line:{{color:'#3949ab'}}}}], Object.assign({{radar:{{range:[0,10]}}, polar:{{angularaxis:{{tickfont:{{size:11}}}}}}}}, L));
-
-Plotly.newPlot('chDist', [{{type:'pie', labels:D.dist_labels, values:D.dist_values, hole:.45, marker:{{colors:D.dist_colors}}}}], Object.assign({{showlegend:true, legend:{{font:{{size:11}}}}}}, L));
-
-Plotly.newPlot('chVol', [{{type:'bar', x:D.vol_labels, y:D.vol_values, marker:{{color:'#3949ab'}}, text:D.vol_values, textposition:'auto'}}], Object.assign({{xaxis:{{title:'Volume'}}, yaxis:{{title:'Images', rangemode:'tozero'}}}}, L));
-
-Plotly.newPlot('chTag', [{{type:'bar', orientation:'h', y:D.tag_labels, x:D.tag_values, marker:{{color:D.tag_colors}}, text:D.tag_values, textposition:'auto'}}], Object.assign({{}}, L, {{margin:{{l:120, r:20, t:10, b:30}}, xaxis:{{title:'Images', rangemode:'tozero'}}, yaxis:{{automargin:true}}}}));
 
 buildTags();
 
@@ -947,8 +1020,10 @@ function errorsOnly() {{
 </body>
 </html>"""
 
-    output.write_text(html, encoding="utf-8")
-    print(f"Dashboard → {output}")
+    if output is not None:
+        output.write_text(html, encoding="utf-8")
+        print(f"Dashboard → {output}")
+    return html
 
 
 # ── Entry point ────────────────────────────────────────────────────────
@@ -970,26 +1045,12 @@ def main() -> None:
     jf = args.jsonl or dd / "hokusai_vlm_reviews.jsonl"
     df = args.db or dd / "hokusai_vlm_reviews.db"
 
-    reviews = load_reviews(jf, df)
-    print(f"Reviews: {len(reviews)}")
-    errors = load_errors(df) if df.exists() else []
+    all_images, errors = load_all_images(jf, df)
+    print(f"Reviews: {len(all_images) - len(errors)}")
     print(f"Errors:  {len(errors)}")
 
-    all_images = list(reviews)
-    for e in errors:
-        all_images.append({
-            "image": e["image"],
-            "subject": "⚠️ TIMEOUT",
-            "category": "error",
-            "training_suitability": 0,
-            "lora_quality": {},
-            "notes": e.get("error") or "Read timed out",
-            "_error": True,
-        })
-
     output = args.output or (docs_dir / "dashboard.html")
-    img_dir = args.img_dir
-    build_dashboard(all_images, errors, img_dir, output, args.title)
+    build_dashboard(all_images, errors, args.img_dir, output, args.title)
 
 
 if __name__ == "__main__":

@@ -1,12 +1,16 @@
 name: viewer
-version: 1.0.0
-description: "Generate the static Plotly dashboard (docs/dashboard.html) from VLM review data."
-entry_point: generate_report.py
+version: 1.1.0
+description: "Hokusai VLM dashboard: FastAPI server and static HTML export, charts built with plotly.py."
+entry_point: server.py
 workers:
+  - server.py
   - generate_report.py
 commands:
+  - name: serve
+    description: "Run the FastAPI dashboard on port 3002 (default)"
+    usage: "python agents/skills/viewer/server.py  # or: PORT=8080 python agents/skills/viewer/server.py"
   - name: report
-    description: "Build docs/dashboard.html from docs/data VLM reviews"
+    description: "Export a static docs/dashboard.html (plotly.py figures + plotly.js from CDN)"
     usage: "python agents/skills/viewer/generate_report.py [--jsonl PATH] [--db PATH] [--output docs/dashboard.html]"
 inputs:
   jsonl: docs/data/hokusai_vlm_reviews.jsonl
@@ -14,3 +18,10 @@ inputs:
   images: docs/images
 outputs:
   dashboard: docs/dashboard.html
+  pages:
+    - GET /                 # dashboard
+    - GET /viewer           # volume viewer
+    - GET /api/get?ids=LATEST
+    - GET /api/reviews
+    - GET /api/stats
+    - GET /api/metadata
