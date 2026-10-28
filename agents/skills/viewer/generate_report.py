@@ -8,6 +8,7 @@ No FastAPI required — pure HTML+JS with embedded data.
 import json
 import sqlite3
 import re
+import base64
 import argparse
 from pathlib import Path
 from datetime import datetime
@@ -178,15 +179,17 @@ def img_tag(name: str, img_dir: str | None, size: str = "80px") -> str:
             f'display:flex;align-items:center;justify-content:center;color:#999;font-size:10px">N/A</div>'
         )
     src = f"{img_dir}/{name}"
-    err = (
-        '<div style=&quot;width:' + size + ';height:' + size +
-        ';background:#ffebee;display:flex;align-items:center;'
-        'justify-content:center;color:#c62828;font-size:10px&quot;>ERR</div>'
+    svg = (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}">'
+        '<rect width="100%" height="100%" fill="#ffebee"/>'
+        '<text x="50%" y="50%" fill="#c62828" font-size="11" '
+        'text-anchor="middle" dominant-baseline="middle">ERR</text></svg>'
     )
+    fallback = "data:image/svg+xml;base64," + base64.b64encode(svg.encode("utf-8")).decode("ascii")
     return (
-        f'<img src="{src}" style="width:{size};height:{size};object-fit:cover;'
-        f'border-radius:6px;border:1px solid #ddd;" loading="lazy" '
-        f"onerror=\\\"this.outerHTML='{err}'\\\">"
+        f'<img src="{src}" alt="{name}" style="width:{size};height:{size};object-fit:cover;'
+        f'border-radius:6px;border:1px solid #ddd;background:#fafafa;" loading="lazy" '
+        f"onerror=\"this.onerror=null;this.src='{fallback}'\">"
     )
 
 
@@ -402,10 +405,11 @@ def build_dashboard(
         f'<option value="{c}">{c.replace("_", " ").title()}</option>'
         for c in sorted(stats["categories"])
     )
+    if err_count:
+        cat_opts += '<option value="error">⚠️ Errors</option>'
 
-    # ── grid cards ──
-    cards_html = ""
-    for i, r in enumerate(all_images):
+    # ── card renderer (Glance sample + full Grid) ──
+    def card_html(i: int, r: dict) -> str:
         is_err = r.get("_error", False)
         cat = r.get("category", "unknown")
         suit = r.get("training_suitability", 0)
@@ -413,22 +417,33 @@ def build_dashboard(
         qs = f"{lq.get('linework','')}/{lq.get('contrast','')}/{lq.get('composition','')}/{lq.get('artifact_free','')}"
         subj = (r.get("subject") or "")[:80]
         clr = _suit_color(suit)
-        border = 'border:2px solid #e74c3c' if is_err else ""
-        cards_html += (
-            f'<div class="img-card" data-i="{i}" data-cat="{cat}" data-suit="{suit}" data-name="{r["image"]}" style="cursor:pointer;{border}" onclick="openDetail({i})">'
+        border = "border:2px solid #e74c3c;" if is_err else ""
+        return (
+            f'<div class="img-card" data-i="{i}" data-cat="{cat}" data-suit="{suit}" data-name="{r["image"]}" '
+            f'style="cursor:pointer;{border}" onclick="openDetail({i})" title="詳細を開く">'
             f'<div style="text-align:center;padding:8px">{img_tag(r["image"], img_dir, "150px")}</div>'
             f'<div style="padding:0 10px 10px">'
             f'<div style="font-weight:bold;font-size:11px;margin-bottom:4px">{r["image"]}</div>'
             f'<div style="font-size:10px;color:#7f8c8d;margin-bottom:4px;max-height:28px;overflow:hidden">{subj}</div>'
-            f'<span class="cat-badge" style="background:{CAT_CSS.get(cat,"#eee")};color:{clr}">{cat.replace("_"," ").title()}</span>'
+            f'<span class="cat-badge" style="background:{CAT_CSS.get(cat,"#eee")};color:#fff">{cat.replace("_"," ").title()}</span>'
             f'<div style="font-size:16px;font-weight:bold;color:{clr};text-align:center;margin:6px 0">{suit}/10</div>'
             f'<div style="font-size:10px;color:#95a5a6;text-align:center">Q: {qs}</div>'
             f'</div></div>'
         )
 
-    # ── list rows ──
+    cards_html = "".join(card_html(i, r) for i, r in enumerate(all_images))
+    total_cards = len(all_images)
+
+    # Glance shows a small, stable sample; Grid shows every image.
+    ranked = sorted(
+        enumerate(all_images),
+        key=lambda p: (p[1].get("_error", False), -(p[1].get("training_suitability") or 0), p[1]["image"]),
+    )
+    top_indices = [i for i, r in ranked if not r.get("_error")][:12]
+    sample_html = "".join(card_html(i, all_images[i]) for i in top_indices)
+
+    # ── list rows (details open in the modal; one row per image) ──
     list_rows = ""
-    toggle_rows = ""
     for i, r in enumerate(all_images):
         is_err = r.get("_error", False)
         cat = r.get("category", "unknown")
@@ -439,51 +454,17 @@ def build_dashboard(
         notes = (r.get("error") or r.get("notes") or "")[:120]
         clr = _suit_color(suit)
         bg = "background:#fff5f5;" if is_err else ""
-
-        row = (
-            f'<tr class="lrow" data-i="{i}" data-cat="{cat}" data-suit="{suit}" data-name="{r["image"]}" style="{bg}">'
-            f'<td style="text-align:center;cursor:pointer" onclick="togDetail(this)">▶</td>'
-            f'<td style="font-weight:bold;font-size:11px">{r["image"]}</td>'
-            f'<td style="font-size:11px;color:#7f8c8d;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{subj}</td>'
-            f'<td><span class="cat-badge" style="background:{CAT_CSS.get(cat,"#eee")};color:{clr}">{cat.replace("_"," ").title()}</span></td>'
-            f'<td style="font-weight:bold;color:{clr}">{suit}/10</td>'
-            f'<td style="font-size:11px">{qs}</td>'
-            f'<td style="font-size:10px;color:#95a5a6;max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{notes}</td>'
-            f'</tr>'
-            f'<tr class="detail-row" style="display:none;background:#f8f9fa"><td colspan="7" style="padding:10px">'
-            f'<table style="width:100%;border:1px solid #e0e0e0;border-radius:4px;overflow:hidden">'
-            f'<tr><td style="padding:6px;font-weight:bold;border-bottom:1px solid #e0e0e0">Subject</td><td style="padding:6px;border-bottom:1px solid #e0e0e0">{subj}</td></tr>'
-            f'<tr><td style="padding:6px;font-weight:bold;border-bottom:1px solid #e0e0e0">Notes</td><td style="padding:6px;border-bottom:1px solid #e0e0e0">{notes}</td></tr>'
-            f'<tr><td style="padding:6px;font-weight:bold;border-bottom:1px solid #e0e0e0">Category</td><td style="padding:6px;border-bottom:1px solid #e0e0e0">{cat}</td></tr>'
-            f'<tr><td style="padding:6px;font-weight:bold;border-bottom:1px solid #e0e0e0">Suitability</td><td style="padding:6px;border-bottom:1px solid #e0e0e0">{suit}/10</td></tr>'
-            f'<tr><td style="padding:6px;font-weight:bold">LoRA Quality</td><td style="padding:6px">{qs} (L/C/C/A)</td></tr>'
-            f'<tr><td colspan="2" style="padding:6px;text-align:right"><button onclick="openDetail({i})" style="padding:4px 12px;border:1px solid #3949ab;background:#fff;color:#3949ab;border-radius:6px;cursor:pointer;font-size:11px">🔍 詳細 / 読み上げ</button></td></tr>'
-            f'</table></td></tr>'
-        )
-        toggle_rows += row
-
         list_rows += (
             f'<tr class="lrow" data-i="{i}" data-cat="{cat}" data-suit="{suit}" data-name="{r["image"]}" style="{bg}">'
-            f'<td style="text-align:center;cursor:pointer" onclick="openDetail({i})">{img_tag(r["image"], img_dir, "80px")}</td>'
+            f'<td style="text-align:center;cursor:pointer" onclick="openDetail({i})" title="詳細を開く">{img_tag(r["image"], img_dir, "80px")}</td>'
             f'<td style="font-weight:bold;font-size:11px">{r["image"]}</td>'
             f'<td style="font-size:11px;color:#7f8c8d;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{subj}</td>'
-            f'<td><span class="cat-badge" style="background:{CAT_CSS.get(cat,"#eee")};color:{clr}">{cat.replace("_"," ").title()}</span></td>'
+            f'<td><span class="cat-badge" style="background:{CAT_CSS.get(cat,"#eee")};color:#fff">{cat.replace("_"," ").title()}</span></td>'
             f'<td style="font-weight:bold;color:{clr}">{suit}/10</td>'
             f'<td style="font-size:11px">{qs}</td>'
             f'<td style="font-size:10px;color:#95a5a6;max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{notes}</td>'
             f'</tr>'
         )
-
-    # error cards
-    err_html = ""
-    if err_count:
-        for e in errors:
-            err_html += (
-                f'<div style="background:#fff3e0;border-radius:8px;padding:10px;text-align:center">'
-                f'{img_tag(e["image"], img_dir, "120px")}'
-                f'<div style="font-weight:bold;font-size:12px;margin:5px 0;color:#c62828">{e["image"]}</div>'
-                f'<div style="font-size:11px;color:#795548">{e.get("error") or ""[:150]}</div></div>'
-            )
 
     # ── Grouped by category HTML ──
     grouped = OrderedDict()
@@ -561,7 +542,7 @@ function catColor(t) { return CC[t] || '#607d8b'; }
 let seqOrder = [], seqPos = -1, current = -1, speaking = false;
 
 function visibleOrder() {
-  return [...document.querySelectorAll('#gv .img-card')]
+  return [...document.querySelectorAll('#grid .img-card')]
     .filter(e => e.style.display !== 'none')
     .map(e => parseInt(e.dataset.i, 10));
 }
@@ -665,9 +646,26 @@ function updateSpeakBtn() {
   if (b) b.textContent = speaking ? '⏹ 停止' : '🔊 読み上げ';
 }
 
+function tagCard(d, i) {
+  const card = document.createElement('div'); card.className = 'img-card'; card.style.cursor = 'pointer';
+  card.onclick = () => openDetail(i, true);
+  const img = document.createElement('img');
+  img.src = IMG + '/' + d.image; img.loading = 'lazy'; img.alt = d.image;
+  img.style.cssText = 'width:100%;aspect-ratio:1;object-fit:cover;display:block';
+  img.onerror = () => { img.style.background = '#ffebee'; img.alt = 'ERR'; img.removeAttribute('src'); };
+  const box = document.createElement('div'); box.style.padding = '8px';
+  const name = document.createElement('div'); name.textContent = d.image; name.style.cssText = 'font-weight:600;font-size:11px';
+  const sub = document.createElement('div'); sub.textContent = (d.subject || '').slice(0, 70); sub.style.cssText = 'font-size:10px;color:#7f8c8d;margin:3px 0';
+  const suit = document.createElement('div'); suit.textContent = d.suit + '/10';
+  suit.style.cssText = 'font-size:12px;font-weight:700;color:' + (d.suit >= 8 ? '#2e7d32' : d.suit >= 6 ? '#f57f17' : '#c62828');
+  box.append(name, sub, suit); card.append(img, box);
+  return card;
+}
+
 function buildTags() {
   const root = document.getElementById('tagRoot');
   if (!root) return;
+  const CAP = 12;
   const map = new Map();
   DATA.forEach((d, i) => (d.tags && d.tags.length ? d.tags : ['unknown']).forEach(t => {
     if (!map.has(t)) map.set(t, []);
@@ -680,22 +678,20 @@ function buildTags() {
     const head = document.createElement('div'); head.className = 'tag-head'; head.style.background = catColor(tag);
     head.textContent = tag.replace(/_/g, ' ') + ' (' + ids.length + ')';
     const grid = document.createElement('div'); grid.className = 'gv';
-    ids.forEach(i => {
-      const d = DATA[i];
-      const card = document.createElement('div'); card.className = 'img-card'; card.style.cursor = 'pointer';
-      card.onclick = () => openDetail(i, true);
-      const img = document.createElement('img');
-      img.src = IMG + '/' + d.image; img.loading = 'lazy'; img.alt = d.image;
-      img.style.cssText = 'width:100%;aspect-ratio:1;object-fit:cover;display:block';
-      img.onerror = () => { img.style.background = '#ffebee'; img.alt = 'ERR'; img.removeAttribute('src'); };
-      const box = document.createElement('div'); box.style.padding = '8px';
-      const name = document.createElement('div'); name.textContent = d.image; name.style.cssText = 'font-weight:600;font-size:11px';
-      const sub = document.createElement('div'); sub.textContent = (d.subject || '').slice(0, 70); sub.style.cssText = 'font-size:10px;color:#7f8c8d;margin:3px 0';
-      const suit = document.createElement('div'); suit.textContent = d.suit + '/10';
-      suit.style.cssText = 'font-size:12px;font-weight:700;color:' + (d.suit >= 8 ? '#2e7d32' : d.suit >= 6 ? '#f57f17' : '#c62828');
-      box.append(name, sub, suit); card.append(img, box); grid.appendChild(card);
-    });
-    sec.append(head, grid); frag.appendChild(sec);
+    ids.slice(0, CAP).forEach(i => grid.appendChild(tagCard(DATA[i], i)));
+    sec.append(head, grid);
+    if (ids.length > CAP) {
+      const more = document.createElement('button');
+      more.className = 'btn';
+      more.style.margin = '12px';
+      more.textContent = 'さらに表示（残り ' + (ids.length - CAP) + ' 件）';
+      more.onclick = () => {
+        ids.slice(CAP).forEach(i => grid.appendChild(tagCard(DATA[i], i)));
+        more.remove();
+      };
+      sec.append(more);
+    }
+    frag.appendChild(sec);
   });
   root.replaceChildren(frag);
 }
@@ -814,8 +810,9 @@ body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Rob
             <div class="sc"><div class="lbl">Linework</div><div class="val">{stats["quality"].get("linework",0):.1f}</div><div class="sub">/10 avg quality</div></div>
             <div class="sc err"><div class="lbl">Errors</div><div class="val">{err_count}</div><div class="sub">{err_pct}% timeout/unparseable</div></div>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px">
-            {cards_html}
+        <h3 style="color:#1a237e;margin:0 0 10px">⭐ Top rated samples</h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px">
+            {sample_html}
         </div>
     </div>
 
@@ -855,21 +852,25 @@ body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Rob
         <button onclick="startSeq()">▶ 順番に見る</button>
     </div>
 
-    <div class="info" id="info">Showing 0 / {stats["total"]}</div>
+    <div class="info" id="info">Showing {total_cards} / {total_cards}</div>
 
     <!-- Grid -->
-    <div class="gv hidden" id="gv">{cards_html}</div>
+    <div class="gv hidden" id="grid">{cards_html}</div>
 
     <!-- List -->
-    <div class="lv hidden" id="lv">
+    <div class="lv hidden" id="list">
         <table>
+            <colgroup>
+                <col style="width:96px"><col style="width:172px"><col style="width:340px">
+                <col style="width:112px"><col style="width:96px"><col style="width:88px"><col>
+            </colgroup>
             <thead><tr><th></th><th>Image</th><th>Subject</th><th>Category</th><th>Suitability</th><th>Quality</th><th>Notes</th></tr></thead>
             <tbody>{list_rows}</tbody>
         </table>
     </div>
 
     <!-- Grouped by Category -->
-    <div class="grp hidden" id="grp">{group_html}</div>
+    <div class="grp hidden" id="group">{group_html}</div>
 
     <!-- Grouped by Tags (rebuilt from category tokens) -->
     <div class="grp hidden" id="tags"><div id="tagRoot"></div></div>
@@ -890,16 +891,6 @@ body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Rob
         </div>
     </div>
 
-    <!-- Toggle Detail (for List view) -->
-    <div class="tv hidden" id="tv">
-        <table>
-            <thead><tr><th></th><th>Image</th><th>Subject</th><th>Category</th><th>Suitability</th><th>Quality</th><th>Notes</th></tr></thead>
-            <tbody>{toggle_rows}</tbody>
-        </table>
-    </div>
-
-    <!-- Errors -->
-    {err_html}
 
     <!-- Detail modal: image / comments / TTS / sequential navigation -->
     <div class="modal hidden" id="detailModal" onclick="if(event.target===this)closeDetail()">
@@ -923,10 +914,11 @@ const IMG = {img_json};
 const CC = {cat_json};
 
 buildTags();
+apply();
 
 // ── View toggle ──
 function setView(v) {{
-    const views = ['glance','grid','list','group','graph','tags','tv'];
+    const views = ['glance','grid','list','group','graph','tags'];
     views.forEach(n => document.getElementById(n).classList.add('hidden'));
     document.getElementById(v).classList.remove('hidden');
     document.querySelectorAll('.vtog button').forEach(b=>b.classList.remove('on'));
@@ -939,15 +931,11 @@ function setView(v) {{
         }}), 60);
     }}
     apply();
-}}
-
-function togDetail(el) {{
-    const row = el.closest('tr');
-    const det = row.nextElementSibling;
-    if(det && det.classList.contains('detail-row')) {{
-        det.style.display = det.style.display==='none' ? 'table-row' : 'none';
-        el.textContent = det.style.display==='none' ? '▶' : '▼';
-    }}
+    const info = document.getElementById('info');
+    if(v === 'glance') info.textContent = 'Overview';
+    else if(v === 'group') info.textContent = document.querySelectorAll('#group > div').length + ' groups';
+    else if(v === 'tags') info.textContent = document.querySelectorAll('#tagRoot .tag-sec').length + ' tags';
+    else if(v === 'graph') info.textContent = '6 charts';
 }}
 
 // ── Filter / Sort ──
@@ -956,8 +944,8 @@ function apply() {{
     const catF = document.getElementById('selCat').value;
     const suitF = document.getElementById('selSuit').value;
 
-    const cards = [...document.querySelectorAll('.img-card')];
-    const rows = [...document.querySelectorAll('.lrow')];
+    const cards = [...document.querySelectorAll('#grid .img-card')];
+    const rows = [...document.querySelectorAll('#list .lrow')];
 
     // Filter
     const pick = (el) => {{
@@ -974,10 +962,9 @@ function apply() {{
     show(cards);
     show(rows);
 
-    // Sort — collect visible then re-append
+    // Sort all elements (visible + hidden) so filters can be cleared safely
     const doSort = (els) => {{
-        const vis = els.filter(e => e.style.display !== 'none');
-        vis.sort((a, b) => {{
+        const sorted = [...els].sort((a, b) => {{
             switch(sort) {{
                 case 'sD': return parseInt(b.dataset.suit) - parseInt(a.dataset.suit);
                 case 'sA': return parseInt(a.dataset.suit) - parseInt(b.dataset.suit);
@@ -989,17 +976,14 @@ function apply() {{
         }});
         const parent = els[0]?.parentNode;
         if(!parent) return;
-        vis.forEach(e => parent.appendChild(e));
-        document.querySelectorAll('.detail-row').forEach(dr => dr.style.display = 'none');
-        document.querySelectorAll('.lrow').forEach(lr => {{ const nxt = lr.nextElementSibling; if(nxt?.classList?.contains('detail-row')) nxt.style.display='none'; }});
-        document.querySelectorAll('.lrow').forEach(lr => lr.querySelector('td') && (lr.querySelector('td').textContent='▶'));
+        sorted.forEach(e => parent.appendChild(e));
     }};
 
     doSort(cards);
     doSort(rows);
 
     document.getElementById('info').textContent =
-        `$Showing ${{cards.filter(e=>e.style.display!=='none').length}} / ${{stats["total"]}}`;
+        `Showing ${{cards.filter(e=>e.style.display!=='none').length}} / ${{cards.length}}`;
 }}
 
 function reset() {{
@@ -1010,8 +994,9 @@ function reset() {{
 }}
 
 function errorsOnly() {{
-    document.getElementById('selSuit').value = '0-3';
-    apply();
+    document.getElementById('selCat').value = 'error';
+    document.getElementById('selSuit').value = '';
+    setView('grid');
 }}
 
 {extra_js}

@@ -227,7 +227,7 @@ def api_reviews(
 @app.get("/api/get")
 def api_get(
     ids: str = Query(default="LATEST", description="LATEST, comma-separated image names, or indexes"),
-    limit: int = Query(default=1, ge=1, le=500),
+    limit: int = Query(default=20, ge=1, le=500),
 ) -> JSONResponse:
     """Generic fetch-by-id endpoint (also answers preview harnesses polling LATEST)."""
     data = get_data()
@@ -247,10 +247,25 @@ def api_get(
                 picked.append(by_stem[w])
             elif w.isdigit() and 0 <= int(w) < len(items):
                 picked.append(items[int(w)])
+    # Some preview harnesses expect a `clips` array and call .find() on it.
+    clips = [
+        {
+            **d,
+            "id": d["image"],
+            "clip_id": d["image"],
+            "name": d["image"],
+            "title": d.get("subject") or d["image"],
+            "content": d.get("notes") or "",
+            "type": "image",
+            "url": f"/images/{d['image']}",
+        }
+        for d in picked
+    ]
     return JSONResponse({
         "ids": wanted,
         "count": len(picked),
         "items": picked,
+        "clips": clips,
         "updated_at": _iso_now(),
     })
 
