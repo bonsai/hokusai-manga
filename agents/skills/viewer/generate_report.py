@@ -377,6 +377,7 @@ def build_dashboard(
     output: Path | None,
     title: str = "Hokusai Dashboard",
     plotly_js: str = PLOTLY_JS_CDN,
+    vlm_demo_url: str | None = None,
 ) -> str:
     total = len(all_images)
     err_count = len(errors)
@@ -496,6 +497,11 @@ def build_dashboard(
 
     figures = build_figures(stats, tag_labels, tag_values, tag_colors, vol_labels, vol_values)
 
+    demo_link = (
+        f'&nbsp;|&nbsp; <a href="{vlm_demo_url}" style="color:#fff;text-decoration:underline">📷 VLM Demo</a>'
+        if vlm_demo_url else ""
+    )
+
     extra_css = """
 /* Tag view */
 .tag-sec { margin-bottom: 20px; }
@@ -559,6 +565,9 @@ function qualityRows(q) {
 function openDetail(i, keepOrder) {
   const d = DATA[i];
   if (!d) return;
+  const modalEl = document.getElementById('detailModal');
+  const bodyEl = document.getElementById('detailBody');
+  if (!modalEl || !bodyEl) return;
   current = i;
   if (!keepOrder || seqOrder.indexOf(i) < 0) seqOrder = visibleOrder();
   seqPos = seqOrder.indexOf(i);
@@ -568,8 +577,7 @@ function openDetail(i, keepOrder) {
   const q = d.quality || {};
   const tags = (d.tags || []).map(t => `<span class="badge-tag" style="background:${catColor(t)}">${esc(String(t).replace(/_/g, ' '))}</span>`).join('');
   const suitColor = d.suit >= 8 ? '#2e7d32' : d.suit >= 6 ? '#f57f17' : '#c62828';
-  const body = document.getElementById('detailBody');
-  body.innerHTML = `
+  bodyEl.innerHTML = `
     <div class="detail-left">
       <img class="detail-img" src="${IMG}/${esc(d.image)}" alt="${esc(d.image)}" loading="eager">
       <div class="detail-file">${esc(d.image)}</div>
@@ -584,15 +592,17 @@ function openDetail(i, keepOrder) {
     </div>`;
   const raw = document.getElementById('rawBox');
   if (raw) raw.textContent = d.raw || '(no raw response)';
-  document.getElementById('seqPos').textContent = `${seqPos + 1} / ${seqOrder.length}`;
-  document.getElementById('detailModal').classList.remove('hidden');
+  const seqEl = document.getElementById('seqPos');
+  if (seqEl) seqEl.textContent = `${seqPos + 1} / ${seqOrder.length}`;
+  modalEl.classList.remove('hidden');
   document.body.style.overflow = 'hidden';
   updateSpeakBtn();
 }
 
 function closeDetail() {
   stopSpeak();
-  document.getElementById('detailModal').classList.add('hidden');
+  const modalEl = document.getElementById('detailModal');
+  if (modalEl) modalEl.classList.add('hidden');
   document.body.style.overflow = '';
 }
 
@@ -697,7 +707,8 @@ function buildTags() {
 }
 
 document.addEventListener('keydown', e => {
-  if (document.getElementById('detailModal').classList.contains('hidden')) return;
+  const modalEl = document.getElementById('detailModal');
+  if (!modalEl || modalEl.classList.contains('hidden')) return;
   if (e.key === 'Escape') closeDetail();
   else if (e.key === 'ArrowRight') { e.preventDefault(); step(1); }
   else if (e.key === 'ArrowLeft') { e.preventDefault(); step(-1); }
@@ -793,6 +804,7 @@ body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Rob
         Generated: {datetime.now():%Y-%m-%d %H:%M:%S}
         &nbsp;|&nbsp; {stats["total"]} images
         &nbsp;|&nbsp; Avg Suitability: {stats["avg_suitability"]}/10
+        {demo_link}
     </div>
 </div>
 

@@ -1,14 +1,15 @@
 name: viewer
-version: 1.1.0
+version: 1.2.0
 description: "Hokusai VLM dashboard: FastAPI server and static HTML export, charts built with plotly.py."
 entry_point: server.py
 workers:
   - server.py
   - generate_report.py
+  - vlm_demo.py
 commands:
   - name: serve
-    description: "Run the FastAPI dashboard on port 3002 (default)"
-    usage: "python agents/skills/viewer/server.py  # or: PORT=8080 python agents/skills/viewer/server.py"
+    description: "Run the FastAPI dashboard + VLM camera demo on port 3002 (default)"
+    usage: "VLM_BASE_URL=http://localhost:1234/v1 python agents/skills/viewer/server.py  # or PORT=8080"
   - name: report
     description: "Export a static docs/dashboard.html (plotly.py figures + plotly.js from CDN)"
     usage: "python agents/skills/viewer/generate_report.py [--jsonl PATH] [--db PATH] [--output docs/dashboard.html]"
@@ -21,7 +22,10 @@ outputs:
   pages:
     - GET /                 # dashboard
     - GET /viewer           # volume viewer
+    - GET /vlm              # camera + VLM text demo
     - GET /api/get?ids=LATEST
     - GET /api/reviews
     - GET /api/stats
     - GET /api/metadata
+    - GET /api/vlm/health
+    - POST /api/vlm

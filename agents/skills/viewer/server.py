@@ -22,18 +22,23 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
+from urllib import error as urlerror
+from urllib import request as urlrequest
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 # Import the shared renderer/data loaders from the sibling worker
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from generate_report import build_dashboard, collect_meta, compute_stats, load_all_images  # noqa: E402
+from vlm_demo import DEFAULT_PROMPT as VLM_DEFAULT_PROMPT, PAGE_HTML as VLM_PAGE_HTML  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DOCS_DIR = REPO_ROOT / "docs"
@@ -44,11 +49,15 @@ JSONL_PATH = DATA_DIR / "hokusai_vlm_reviews.jsonl"
 DB_PATH = DATA_DIR / "hokusai_vlm_reviews.db"
 METADATA_PATH = DATA_DIR / "metadata.json"
 
+VLM_BASE_URL = os.environ.get("VLM_BASE_URL", "http://127.0.0.1:1234/v1").rstrip("/")
+VLM_MODEL = os.environ.get("VLM_MODEL", "tempura-qwen2.5-vl-3b")
+VLM_API_KEY = os.environ.get("VLM_API_KEY", "")
+
 app = FastAPI(title="Hokusai VLM Dashboard", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
@@ -106,6 +115,7 @@ def get_html() -> str:
             output=None,
             title="Hokusai VLM Dashboard",
             plotly_js="/static/plotly.min.js",
+            vlm_demo_url="/vlm",
         )
     return _CACHE["html"]
 
@@ -267,6 +277,116 @@ def api_get(
         "items": picked,
         "clips": clips,
         "updated_at": _iso_now(),
+    })
+
+
+class VLMRequest(BaseModel):
+    image: str
+    prompt: str | None = None
+    model: str | None = None
+    max_tokens: int = 1000
+
+
+def _vlm_headers() -> dict:
+    headers = {"Content-Type": "application/json"}
+    if VLM_API_KEY:
+        headers["Authorization"] = f"Bearer {VLM_API_KEY}"
+    return headers
+
+
+def _normalize_image(image: str) -> str:
+    image = (image or "").strip()
+    if image.startswith("data:image/"):
+        return image
+    if len(image) > 100:
+        return "data:image/jpeg;base64," + image
+    raise HTTPException(status_code=400, detail="image must be a data URL or base64 string")
+
+
+@app.get("/vlm", response_class=HTMLResponse)
+@app.get("/vlm/", response_class=HTMLResponse)
+def vlm_demo() -> HTMLResponse:
+    return HTMLResponse(VLM_PAGE_HTML)
+
+
+@app.get("/api/vlm/health")
+def api_vlm_health() -> JSONResponse:
+    try:
+        req = urlrequest.Request(VLM_BASE_URL + "/models", headers=_vlm_headers(), method="GET")
+        with urlrequest.urlopen(req, timeout=3) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+        models = [m.get("id") for m in payload.get("data", []) if isinstance(m, dict) and m.get("id")]
+        effective_model = VLM_MODEL if VLM_MODEL in models else (models[0] if models else VLM_MODEL)
+        return JSONResponse({
+            "server": True,
+            "vlm": True,
+            "base_url": VLM_BASE_URL,
+            "model": effective_model,
+            "models": models,
+            "updated_at": _iso_now(),
+        })
+    except Exception as exc:
+        return JSONResponse({
+            "server": True,
+            "vlm": False,
+            "base_url": VLM_BASE_URL,
+            "model": VLM_MODEL,
+            "models": [],
+            "error": f"{type(exc).__name__}: {exc}",
+            "updated_at": _iso_now(),
+        })
+
+
+@app.post("/api/vlm")
+def api_vlm(req: VLMRequest) -> JSONResponse:
+    image = _normalize_image(req.image)
+    if len(image) > 30_000_000:
+        raise HTTPException(status_code=413, detail="image is too large (30MB base64 limit)")
+
+    prompt = (req.prompt or VLM_DEFAULT_PROMPT).strip()
+    model = req.model or VLM_MODEL
+    payload = {
+        "model": model,
+        "messages": [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": image}},
+            ],
+        }],
+        "temperature": 0.2,
+        "max_tokens": req.max_tokens,
+    }
+    started = time.perf_counter()
+    request = urlrequest.Request(
+        VLM_BASE_URL + "/chat/completions",
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers=_vlm_headers(),
+        method="POST",
+    )
+    try:
+        with urlrequest.urlopen(request, timeout=180) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except urlerror.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")[:800]
+        raise HTTPException(status_code=502, detail=f"VLM HTTP {exc.code}: {detail}")
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"VLM ({VLM_BASE_URL}) に接続できません: {type(exc).__name__}: {exc}",
+        )
+
+    choices = data.get("choices") or []
+    content = choices[0].get("message", {}).get("content") if choices else None
+    if isinstance(content, list):
+        content = "".join(p.get("text", "") for p in content if isinstance(p, dict))
+    if not isinstance(content, str):
+        raise HTTPException(status_code=502, detail=f"Unexpected VLM response: {str(data)[:500]}")
+
+    return JSONResponse({
+        "text": content,
+        "model": data.get("model") or model,
+        "elapsed_ms": round((time.perf_counter() - started) * 1000),
     })
 
 

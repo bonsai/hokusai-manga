@@ -94,9 +94,30 @@ The server reads `docs/data/` directly and serves images from `docs/images/`. It
 | `GET /api/reviews?tag=&category=&min_suit=&q=&limit=&offset=` | Filtered review list |
 | `GET /api/stats` | Aggregates used by the dashboard |
 | `GET /api/metadata` | `docs/data/metadata.json` |
+| `GET /vlm` | Camera + VLM text demo |
+| `GET /api/vlm/health` | VLM endpoint status (LM Studio / OpenAI compatible) |
+| `POST /api/vlm` | Send an image + prompt and return the VLM text |
 | `GET /healthz` | Health check |
 
 CORS is open (`*`) so preview harnesses can poll `/api/get`.
+
+## VLM camera demo
+
+Open <http://localhost:3002/vlm> with the server running. The page can:
+
+- start the device camera (`getUserMedia`) and capture a frame
+- upload an image instead (camera-less fallback)
+- choose a prompt preset (LoRA JSON review / Japanese description / OCR)
+- send the image to `/api/vlm` and show the VLM answer in a text view
+- pretty-print JSON, copy the result, or save it as `.txt`
+
+The server proxies to an OpenAI-compatible endpoint (LM Studio by default):
+
+```bash
+VLM_BASE_URL=http://127.0.0.1:1234/v1 VLM_MODEL=tempura-qwen2.5-vl-3b python agents/skills/viewer/server.py
+```
+
+Camera access requires `localhost` or HTTPS. If the VLM is not running, the page shows `VLM未接続` and returns a readable error instead of failing silently.
 
 ## Static export (GitHub Pages)
 
