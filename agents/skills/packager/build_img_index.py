@@ -7,9 +7,10 @@ import json
 import re
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-IMG_DIR = ROOT / "img"
-INDEX_PATH = IMG_DIR / "index.json"
+ROOT = Path(__file__).resolve().parents[3]
+DOCS_DIR = ROOT / "docs"
+IMG_DIR = DOCS_DIR / "images"
+INDEX_PATH = DOCS_DIR / "img" / "index.json"
 EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif"}
 
 
@@ -39,7 +40,7 @@ def main() -> None:
     for path in sorted(IMG_DIR.rglob("*")):
         if not path.is_file() or path.suffix.lower() not in EXTENSIONS:
             continue
-        relative = path.relative_to(ROOT).as_posix()
+        relative = path.relative_to(DOCS_DIR).as_posix()
         volume, pid = infer_volume(path)
         images.append({
             "filename": path.name,
@@ -49,6 +50,7 @@ def main() -> None:
             "ndl_pid": pid,
             "bytes": path.stat().st_size,
         })
+    INDEX_PATH.parent.mkdir(parents=True, exist_ok=True)
     INDEX_PATH.write_text(
         json.dumps({"images": images, "image_count": len(images)}, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",

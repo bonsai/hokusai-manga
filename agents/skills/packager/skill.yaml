@@ -1,0 +1,20 @@
+name: packager
+version: 1.0.0
+description: "Package downloaded pages as a LoRA training ZIP and build the image index used by the viewer."
+entry_point: package_lora_dataset.py
+workers:
+  - package_lora_dataset.py
+  - build_img_index.py
+commands:
+  - name: package
+    description: "Create hokusai_manga_lora_dataset.zip from downloaded images"
+    usage: "python agents/skills/packager/package_lora_dataset.py --input assets --output dist --max-side 1024 --quality 88"
+  - name: index
+    description: "Write docs/img/index.json from docs/images for docs/viewer.html"
+    usage: "python agents/skills/packager/build_img_index.py"
+inputs:
+  assets_dir: assets
+  images: docs/images
+outputs:
+  zip: dist/hokusai_manga_lora_dataset.zip
+  image_index: docs/img/index.json

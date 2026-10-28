@@ -1,0 +1,21 @@
+name: getter
+version: 1.0.0
+description: "Download Hokusai Manga page images and manifests from the NDL IIIF API."
+entry_point: download_rolls.py
+workers:
+  - download_rolls.py
+  - download_ndl_iiif.py
+commands:
+  - name: download
+    description: "Download pending volumes listed in rolls.yaml"
+    usage: "python agents/skills/getter/download_rolls.py [--roll N | --roll-pid PID] [--delay 0.5]"
+  - name: download-one
+    description: "Download a single PID directly"
+    usage: "python agents/skills/getter/download_ndl_iiif.py --pid 851646 --output assets"
+inputs:
+  rolls: agents/skills/getter/rolls.yaml
+  assets_dir: assets
+outputs:
+  images: assets/<pid>/*.jpg
+  manifests: assets/<pid>/manifest.json
+  metadata: docs/data/metadata.json

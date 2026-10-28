@@ -57,19 +57,20 @@
       </select>
       <button id="reload" type="button">Reload metadata</button>
     </div>
-    <p id="status" role="status">Loading metadata.json…</p>
+    <p id="status" role="status">Loading data/metadata.json…</p>
     <section id="localImages" aria-label="Unassigned local images"></section>
     <section id="volumes" class="grid" aria-label="Hokusai Manga volumes"></section>
     <div class="note"><strong>Data note:</strong> PID-to-volume mappings are provisional until each NDL catalog record and IIIF manifest has been checked. Image access and reuse rights should be confirmed at the source before redistribution or model training.</div>
   </main>
-  <footer>Metadata source: <a href="./metadata.json">metadata.json</a> · <a href="https://ndlsearch.ndl.go.jp/" target="_blank" rel="noopener noreferrer">National Diet Library Search</a></footer>
+  <footer>Metadata source: <a href="./data/metadata.json">data/metadata.json</a> · <a href="https://ndlsearch.ndl.go.jp/" target="_blank" rel="noopener noreferrer">National Diet Library Search</a></footer>
   <script>
     const statusEl = document.querySelector('#status');
     const grid = document.querySelector('#volumes');
     const localImagesEl = document.querySelector('#localImages');
     const searchEl = document.querySelector('#search');
     const filterEl = document.querySelector('#statusFilter');
-    let metadata = null;\n    let imageIndex = [];
+    let metadata = null;
+    let imageIndex = [];
 
     function safeText(value) {
       return String(value ?? '');
@@ -232,9 +233,9 @@
 
     async function loadMetadata() {
       statusEl.className = '';
-      statusEl.textContent = 'Loading metadata.json…';
+      statusEl.textContent = 'Loading data/metadata.json…';
       try {
-        const response = await fetch('./metadata.json', { cache: 'no-store' });
+        const response = await fetch('./data/metadata.json', { cache: 'no-store' });
         if (!response.ok) throw new Error('HTTP ' + response.status);
         const data = await response.json();
         if (!Array.isArray(data.volumes)) throw new Error('metadata.json has no volumes array');
@@ -253,7 +254,7 @@
         render();
       } catch (error) {
         statusEl.className = 'error';
-        statusEl.textContent = 'Could not load metadata.json. Open this page from a web server (for example GitHub Pages), and check that metadata.json is in the same directory. Details: ' + error.message;
+        statusEl.textContent = 'Could not load data/metadata.json. Open this page from a web server (for example GitHub Pages), and check that data/metadata.json exists. Details: ' + error.message;
       }
     }
 

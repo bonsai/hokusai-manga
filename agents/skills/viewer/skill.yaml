@@ -1,0 +1,16 @@
+name: viewer
+version: 1.0.0
+description: "Generate the static Plotly dashboard (docs/dashboard.html) from VLM review data."
+entry_point: generate_report.py
+workers:
+  - generate_report.py
+commands:
+  - name: report
+    description: "Build docs/dashboard.html from docs/data VLM reviews"
+    usage: "python agents/skills/viewer/generate_report.py [--jsonl PATH] [--db PATH] [--output docs/dashboard.html]"
+inputs:
+  jsonl: docs/data/hokusai_vlm_reviews.jsonl
+  db: docs/data/hokusai_vlm_reviews.db
+  images: docs/images
+outputs:
+  dashboard: docs/dashboard.html

@@ -11,9 +11,13 @@ import argparse
 from pathlib import Path
 from typing import Optional
 
-# Import from sibling skill
-sys.path.insert(0, str(Path(__file__).parent.parent / "vlm_reviewer"))
+# Import from sibling worker
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from vlm_reviewer import create_reviewer, VLMFrame
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+DATA_DIR = REPO_ROOT / "docs" / "data"
+DEFAULT_IMAGE_DIR = REPO_ROOT / "docs" / "images"
 
 DEFAULT_PROMPT = """Analyze this Hokusai manga illustration for LoRA training dataset. Return JSON:
 {
@@ -28,8 +32,8 @@ DEFAULT_PROMPT = """Analyze this Hokusai manga illustration for LoRA training da
 class HokusaiReviewer:
     def __init__(self, provider: str = "lmstudio", model: str = "tempura-qwen2.5-vl-3b", **kwargs):
         self.reviewer = create_reviewer(provider, model, **kwargs)
-        self.jsonl_path = Path("hokusai_vlm_reviews.jsonl")
-        self.db_path = Path("hokusai_vlm_reviews.db")
+        self.jsonl_path = DATA_DIR / "hokusai_vlm_reviews.jsonl"
+        self.db_path = DATA_DIR / "hokusai_vlm_reviews.db"
         self._init_db()
     
     def _init_db(self):
@@ -133,7 +137,7 @@ class HokusaiReviewer:
 
 def main():
     parser = argparse.ArgumentParser(description="Hokusai Manga Dataset Reviewer")
-    parser.add_argument("image_dir", type=Path, help="Directory with JPG images")
+    parser.add_argument("image_dir", type=Path, nargs="?", default=DEFAULT_IMAGE_DIR, help="Directory with JPG images (default: docs/images)")
     parser.add_argument("--provider", default="lmstudio", choices=["lmstudio", "gemini", "openai", "ollama"])
     parser.add_argument("--model", default="tempura-qwen2.5-vl-3b")
     parser.add_argument("--limit", type=int, help="Max images to process")

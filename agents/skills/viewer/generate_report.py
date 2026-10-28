@@ -678,12 +678,15 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Hokusai VLM Dashboard")
     ap.add_argument("--jsonl", type=Path)
     ap.add_argument("--db", type=Path)
-    ap.add_argument("--output", type=Path, default=Path("./hokusai_report.html"))
+    ap.add_argument("--output", type=Path, default=None)
+    ap.add_argument("--img-dir", default="images", help="Image path prefix written into the HTML (relative to the output file)")
     ap.add_argument("--title", default="Hokusai Dashboard")
     args = ap.parse_args()
 
     sd = Path(__file__).resolve().parent
-    dd = sd.parents[2] / "data"
+    repo_root = sd.parents[2]
+    docs_dir = repo_root / "docs"
+    dd = docs_dir / "data"
 
     jf = args.jsonl or dd / "hokusai_vlm_reviews.jsonl"
     df = args.db or dd / "hokusai_vlm_reviews.db"
@@ -705,8 +708,9 @@ def main() -> None:
             "_error": True,
         })
 
-    img_dir = "images"
-    build_dashboard(all_images, errors, img_dir, args.output, args.title)
+    output = args.output or (docs_dir / "dashboard.html")
+    img_dir = args.img_dir
+    build_dashboard(all_images, errors, img_dir, output, args.title)
 
 
 if __name__ == "__main__":

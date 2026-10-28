@@ -25,9 +25,10 @@ except ImportError:
     HAS_YAML = False
 
 ROOT = Path(__file__).resolve().parent
+REPO_ROOT = ROOT.parents[2]
 ROLLS_PATH = ROOT / "rolls.yaml"
-ASSETS_DIR = ROOT / "assets"
-SCRIPTS_DIR = ROOT / "scripts"
+ASSETS_DIR = REPO_ROOT / "assets"
+SCRIPTS_DIR = ROOT
 
 
 def parse_simple_yaml(path: Path) -> dict:
@@ -123,7 +124,11 @@ def main() -> int:
     ASSETS_DIR.mkdir(parents=True, exist_ok=True)
     
     rolls = load_rolls()
-    
+
+    # A direct PID bypasses rolls.yaml filtering
+    if args.roll_pid:
+        rolls = [{"roll": "?", "pid": args.roll_pid}]
+
     # Filter rolls
     if args.roll:
         rolls = [r for r in rolls if int(r.get("roll", 0)) == args.roll]

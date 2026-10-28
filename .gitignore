@@ -10,10 +10,14 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
-# Large binary assets (managed via Git LFS or local only)
+# Large binary assets / scratch (managed via Git LFS or local only)
 assets/
 output/
 dist/
+local/
+
+# agents/ is schema + worker only; generated HTML belongs in docs/
+agents/**/*.html
 
 # IDE
 *.swp

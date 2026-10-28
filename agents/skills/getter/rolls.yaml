@@ -1,130 +1,106 @@
-# Hokusai Manga — Roll Download Management
-#
-# Each roll maps to an NDL PID. Run scripts/download_ndl_iiif.py per roll,
-# or trigger the GitHub Action "Download one volume".
-#
-# status values: pending | downloading | done | error
-# download_dir : where originals land after running the script
-#
-# ── Volumes 1–15 ───────────────────────────────────────────────────
-
 rolls:
-  - roll: 1
-    title: 北斎漫画 第1編
-    pid: "851646"
-    status: done
-    pages_downloaded: 33
-    pages_total: 33
-    download_dir: assets/851646
-
-  - roll: 2
-    title: 北斎漫画 第2編
-    pid: "851647"
-    status: done
-    pages_downloaded: 31
-    pages_total: 31
-    download_dir: assets/851647
-
-  - roll: 3
-    title: 北斎漫画 第3編
-    pid: "851648"
-    status: done
-    pages_downloaded: 37
-    pages_total: 37
-    download_dir: assets/851648
-
-  - roll: 4
-    title: 北斎漫画 第4編
-    pid: "851649"
-    status: done
-    pages_downloaded: 15
-    pages_total: 15
-    download_dir: assets/851649
-
-  - roll: 5
-    title: 北斎漫画 第5編
-    pid: "851650"
-    status: pending
-    pages_downloaded: 0
-    pages_total: 0
-    download_dir: assets/851650
-
-  - roll: 6
-    title: 北斎漫画 第6編
-    pid: "851651"
-    status: pending
-    pages_downloaded: 0
-    pages_total: 0
-    download_dir: assets/851651
-
-  - roll: 7
-    title: 北斎漫画 第7編
-    pid: "851652"
-    status: pending
-    pages_downloaded: 0
-    pages_total: 0
-    download_dir: assets/851652
-
-  - roll: 8
-    title: 北斎漫画 第8編
-    pid: "851653"
-    status: pending
-    pages_downloaded: 0
-    pages_total: 0
-    download_dir: assets/851653
-
-  - roll: 9
-    title: 北斎漫画 第9編
-    pid: "851654"
-    status: pending
-    pages_downloaded: 0
-    pages_total: 0
-    download_dir: assets/851654
-
-  - roll: 10
-    title: 北斎漫画 第10編
-    pid: "851655"
-    status: pending
-    pages_downloaded: 0
-    pages_total: 0
-    download_dir: assets/851655
-
-  - roll: 11
-    title: 北斎漫画 第11編
-    pid: "851656"
-    status: pending
-    pages_downloaded: 0
-    pages_total: 0
-    download_dir: assets/851656
-
-  - roll: 12
-    title: 北斎漫画 第12編
-    pid: "851657"
-    status: pending
-    pages_downloaded: 0
-    pages_total: 0
-    download_dir: assets/851657
-
-  - roll: 13
-    title: 北斎漫画 第13編
-    pid: "851658"
-    status: pending
-    pages_downloaded: 0
-    pages_total: 0
-    download_dir: assets/851658
-
-  - roll: 14
-    title: 北斎漫画 第14編
-    pid: "851659"
-    status: pending
-    pages_downloaded: 0
-    pages_total: 0
-    download_dir: assets/851659
-
-  - roll: 15
-    title: 北斎漫画 第15編
-    pid: "851660"
-    status: pending
-    pages_downloaded: 0
-    pages_total: 0
-    download_dir: assets/851660
+- download_dir: assets/851646
+  pages_downloaded: 33
+  pages_total: 33
+  pid: '851646'
+  roll: 1
+  status: done
+  title: 北斎漫画 第1編
+- download_dir: assets/851647
+  pages_downloaded: 31
+  pages_total: 31
+  pid: '851647'
+  roll: 2
+  status: done
+  title: 北斎漫画 第2編
+- download_dir: assets/851648
+  pages_downloaded: 37
+  pages_total: 37
+  pid: '851648'
+  roll: 3
+  status: done
+  title: 北斎漫画 第3編
+- download_dir: assets/851649
+  pages_downloaded: 15
+  pages_total: 15
+  pid: '851649'
+  roll: 4
+  status: done
+  title: 北斎漫画 第4編
+- download_dir: assets/851650
+  pages_downloaded: 0
+  pages_total: 0
+  pid: '851650'
+  roll: 5
+  status: error
+  title: 北斎漫画 第5編
+- download_dir: assets/851651
+  pages_downloaded: 0
+  pages_total: 0
+  pid: '851651'
+  roll: 6
+  status: pending
+  title: 北斎漫画 第6編
+- download_dir: assets/851652
+  pages_downloaded: 0
+  pages_total: 0
+  pid: '851652'
+  roll: 7
+  status: pending
+  title: 北斎漫画 第7編
+- download_dir: assets/851653
+  pages_downloaded: 0
+  pages_total: 0
+  pid: '851653'
+  roll: 8
+  status: pending
+  title: 北斎漫画 第8編
+- download_dir: assets/851654
+  pages_downloaded: 0
+  pages_total: 0
+  pid: '851654'
+  roll: 9
+  status: pending
+  title: 北斎漫画 第9編
+- download_dir: assets/851655
+  pages_downloaded: 0
+  pages_total: 0
+  pid: '851655'
+  roll: 10
+  status: pending
+  title: 北斎漫画 第10編
+- download_dir: assets/851656
+  pages_downloaded: 0
+  pages_total: 0
+  pid: '851656'
+  roll: 11
+  status: pending
+  title: 北斎漫画 第11編
+- download_dir: assets/851657
+  pages_downloaded: 0
+  pages_total: 0
+  pid: '851657'
+  roll: 12
+  status: pending
+  title: 北斎漫画 第12編
+- download_dir: assets/851658
+  pages_downloaded: 0
+  pages_total: 0
+  pid: '851658'
+  roll: 13
+  status: pending
+  title: 北斎漫画 第13編
+- download_dir: assets/851659
+  pages_downloaded: 0
+  pages_total: 0
+  pid: '851659'
+  roll: 14
+  status: pending
+  title: 北斎漫画 第14編
+- download_dir: assets/851660
+  pages_downloaded: 0
+  pages_total: 0
+  pid: '851660'
+  roll: 15
+  status: pending
+  title: 北斎漫画 第15編

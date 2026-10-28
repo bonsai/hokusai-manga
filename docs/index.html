@@ -1,11 +1,25 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="refresh" content="0; url=dashboard.html">
-<title>Hokusai Manga Dashboard — Redirecting</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hokusai Manga Dataset</title>
+<style>
+  body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background:#f0f2f5; color:#333; max-width:720px; margin:0 auto; padding:48px 20px; }
+  h1 { color:#1a237e; font-size:24px; margin-bottom:8px; }
+  p { color:#666; font-size:14px; line-height:1.6; }
+  ul { list-style:none; padding:0; display:grid; gap:12px; margin-top:24px; }
+  a.card { display:block; background:#fff; border-radius:12px; padding:18px 20px; text-decoration:none; color:#1a237e; box-shadow:0 1px 6px rgba(0,0,0,.08); font-weight:600; }
+  a.card span { display:block; color:#7f8c8d; font-weight:400; font-size:12px; margin-top:4px; }
+</style>
 </head>
 <body>
-<p>Redirecting to <a href="dashboard.html">dashboard</a>...</p>
+<h1>🎨 Hokusai Manga Dataset</h1>
+<p>北斎漫画の VLM 注釈データセットと可視化ツール。</p>
+<ul>
+  <li><a class="card" href="dashboard.html">📊 VLM Review Dashboard<span>注釈の集計・分布・一覧（Glance / Grid / List / Group / Graph）</span></a></li>
+  <li><a class="card" href="viewer.html">📖 Volume Viewer<span>15巻のメタデータと NDL / IIIF リンク</span></a></li>
+  <li><a class="card" href="data/">🗂 Data<span>metadata.json / annotations.txt / VLM 注釈（JSONL・SQLite）</span></a></li>
+</ul>
 </body>
 </html>

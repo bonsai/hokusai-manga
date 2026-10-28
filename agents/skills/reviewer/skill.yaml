@@ -1,16 +1,25 @@
-name: vlm_reviewer
-version: 1.0.0
-description: "Vision-Language Model reviewer for rendered frames. Supports LM Studio, OpenAI, Gemini, Ollama with MMX spacecraft preset prompts."
-author: "MMX Project"
-license: "MIT"
-entry_point: vlm_reviewer.py
+name: reviewer
+version: 1.1.0
+description: "VLM annotation of Hokusai Manga images. Writes reviews to docs/data and is consumed by the viewer skill."
+entry_point: hokusai_reviewer.py
+workers:
+  - vlm_reviewer.py
+  - hokusai_reviewer.py
+  - batch_review.py
+  - review_10_batch.py
+  - review_10_batch_autoloop.py
 commands:
   - name: review
-    description: "Review frames with VLM"
-    usage: "vlm_reviewer review <frames_dir> [--prompt PROMPT] [--provider PROVIDER] [--model MODEL] [--sample N] [--output FILE]"
-  - name: compare
-    description: "Compare two version frame sets"
-    usage: "vlm_reviewer compare <v1_dir> <v2_dir> [--criteria CRITERIA]"
+    description: "Review images in docs/images (or a given directory) with a VLM"
+    usage: "python agents/skills/reviewer/hokusai_reviewer.py [IMAGE_DIR] [--provider lmstudio] [--model tempura-qwen2.5-vl-3b] [--limit N]"
+  - name: batch
+    description: "Review all remaining images in batches of 10"
+    usage: "python agents/skills/reviewer/review_10_batch_autoloop.py"
+inputs:
+  images: docs/images
+outputs:
+  jsonl: docs/data/hokusai_vlm_reviews.jsonl
+  db: docs/data/hokusai_vlm_reviews.db
 config_schema:
   provider:
     type: string
@@ -34,10 +43,3 @@ config_schema:
   timeout:
     type: integer
     default: 120
-presets:
-  mmx_full: "Complete 7-category MMX spacecraft review"
-  mmx_lighting: "Lighting only assessment"
-  mmx_colors: "Color accuracy only"
-  mmx_camera: "Camera framing only"
-  mmx_geometry: "Mesh integrity only"
-  mmx_quick: "2-3 sentence summary"

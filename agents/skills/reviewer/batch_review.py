@@ -10,8 +10,10 @@ import time
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-DATA_DIR = SCRIPT_DIR.parent / "data"
-IMAGE_DIR = DATA_DIR / "images-hokusai-resized-720"
+REPO_ROOT = SCRIPT_DIR.parents[2]
+DOCS_DIR = REPO_ROOT / "docs"
+DATA_DIR = DOCS_DIR / "data"
+IMAGE_DIR = DOCS_DIR / "images"
 JSONL_PATH = DATA_DIR / "hokusai_vlm_reviews.jsonl"
 DB_PATH = DATA_DIR / "hokusai_vlm_reviews.db"
 

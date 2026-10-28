@@ -5,14 +5,17 @@ Resizes not needed (already resized).
 """
 import sys, json, sqlite3, time
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent / "vlm_reviewer"))
-from vlm_reviewer import create_reviewer, VLMFrame
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-DATA_DIR = SCRIPT_DIR.parent / "data"
-IMAGE_DIR = DATA_DIR / "images-hokusai-resized-720"
+REPO_ROOT = SCRIPT_DIR.parents[2]
+DOCS_DIR = REPO_ROOT / "docs"
+DATA_DIR = DOCS_DIR / "data"
+IMAGE_DIR = DOCS_DIR / "images"
 JSONL_PATH = DATA_DIR / "hokusai_vlm_reviews.jsonl"
 DB_PATH = DATA_DIR / "hokusai_vlm_reviews.db"
+
+sys.path.insert(0, str(SCRIPT_DIR))
+from vlm_reviewer import create_reviewer, VLMFrame
 
 PROMPT = """Analyze this Hokusai manga illustration. Return ONLY JSON:
 {"subject":"...","category":"landscape|figure|yokai|daily_life|nature|calligraphy|action|narrative|animals","lora_quality":{"linework":1-10,"contrast":1-10,"composition":1-10,"artifact_free":1-10},"training_suitability":1-10,"notes":"..."}"""

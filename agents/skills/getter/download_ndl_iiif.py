@@ -14,6 +14,9 @@ from urllib.request import Request, urlopen
 MANIFEST_TEMPLATE = "https://www.dl.ndl.go.jp/api/iiif/{pid}/manifest.json"
 USER_AGENT = "bonsai-hokusai-manga/1.0 (NDL IIIF research downloader)"
 
+REPO_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_METADATA = REPO_ROOT / "docs" / "data" / "metadata.json"
+
 
 def fetch(url: str, timeout: int = 90, attempts: int = 4) -> tuple[bytes, str]:
     """Fetch a URL with a small backoff for transient failures."""
@@ -136,7 +139,7 @@ def update_dataset_metadata(
     volume["page_count"] = len(page_records)
     volume["pages"] = page_records
     volume["metadata_updated_from_manifest"] = True
-    metadata_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8")
+    metadata_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def download(pid: str, output: Path, delay: float, metadata_path: Path) -> int:
@@ -147,8 +150,8 @@ def download(pid: str, output: Path, delay: float, metadata_path: Path) -> int:
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "manifest.json").write_bytes(raw)
     (folder / "source.txt").write_text(
-        f"NDL PID: {pid}\\nManifest: {manifest_url}\\n"
-        "Check the NDL record's rights and access conditions before reuse.\\n",
+        f"NDL PID: {pid}\nManifest: {manifest_url}\n"
+        "Check the NDL record's rights and access conditions before reuse.\n",
         encoding="utf-8",
     )
 
@@ -210,11 +213,11 @@ def download(pid: str, output: Path, delay: float, metadata_path: Path) -> int:
 
     update_dataset_metadata(metadata_path, pid, manifest, pages)
     (folder / "pages.json").write_text(
-        json.dumps({"pid": pid, "manifest_url": manifest_url, "page_count": len(pages), "pages": pages}, ensure_ascii=False, indent=2) + "\\n",
+        json.dumps({"pid": pid, "manifest_url": manifest_url, "page_count": len(pages), "pages": pages}, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
     if errors:
-        (folder / "errors.txt").write_text("\\n".join(errors) + "\\n", encoding="utf-8")
+        (folder / "errors.txt").write_text("\n".join(errors) + "\n", encoding="utf-8")
         print(f"Completed with {len(errors)} page errors; see {folder / 'errors.txt'}")
     print(f"Saved/available: {saved}/{len(canvases)} pages in {folder}")
     return 2 if errors else 0
@@ -224,7 +227,7 @@ def main() -> int:
     parser.add_argument("--pid", required=True, help="NDL digital collection PID, e.g. 851659")
     parser.add_argument("--output", type=Path, default=Path("output"))
     parser.add_argument("--delay", type=float, default=0.5, help="seconds between image requests")
-    parser.add_argument("--metadata", type=Path, default=Path("metadata.json"), help="dataset metadata JSON to update")
+    parser.add_argument("--metadata", type=Path, default=DEFAULT_METADATA, help="dataset metadata JSON to update (default: docs/data/metadata.json)")
     args = parser.parse_args()
     if not re.fullmatch(r"[A-Za-z0-9_-]+", args.pid):
         parser.error("PID may contain only letters, digits, underscores, and hyphens")

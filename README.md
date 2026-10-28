@@ -1,10 +1,38 @@
 # hokusai-manga
 
-NDL IIIF-based research tools for preparing publicly accessible pages of Katsushika Hokusai's *Hokusai Manga* as a compact LoRA training dataset.
+NDL IIIF-based research tools for preparing publicly accessible pages of Katsushika Hokusai's *Hokusai Manga* as a compact LoRA training dataset, plus VLM annotation and a static review dashboard.
+
+## Repository layout
+
+```
+.
+├── README.md                 # 唯一の構造・使い方ドキュメント
+├── docs/                     # GitHub Pages 配信ルート（生成物 + 公開データ）
+│   ├── index.html            # ランディングページ
+│   ├── dashboard.html        # VLM レビュー集計（viewer skill が生成）
+│   ├── viewer.html           # 巻メタデータビューア
+│   ├── images/               # 114枚のページ画像（720px幅）
+│   ├── img/index.json         # viewer 用画像インデックス（packager skill が生成）
+│   └── data/                 # 公開データ（metadata / annotations / VLM 注釈）
+├── agents/skills/            # スキーマ（skill.yaml）+ worker（*.py）のみ
+│   ├── getter/               # NDL IIIF から画像取得
+│   ├── packager/             # LoRA ZIP 作成・画像インデックス生成
+│   ├── reviewer/             # VLM 注釈（docs/data を更新）
+│   └── viewer/               # docs/dashboard.html を生成
+└── .github/workflows/        # ダウンロード / GitHub Pages
+```
+
+### Rules
+
+- `agents/` には **スキーマ (`skill.yaml`) と worker (`*.py`) だけ**を置く。HTML・データ・出力は置かない。
+- `docs/` は **GitHub Pages の配信物と公開データの置き場**。成果物はここにだけ書く。
+- 生成物は生成元の worker が `docs/` 配下へ出力する（手動コピーしない）。
+- 一時ファイル・外部由来の大容量データは `assets/`, `dist/`, `local/`（すべて git 管理外）。
+- ディレクトリ構造の記述はこの README だけに置く。
 
 ## Download all 15 volumes and create a LoRA ZIP
 
-1. Open [Actions → Download and package Hokusai Manga for LoRA](https://github.com/bonsai/hokusai-manga/actions/workflows/download-one-volume.yml).
+1. Open [Actions → Download and package Hokusai Manga for LoRA](https://github.com/bonsai/hokusai-manga/actions/workflows/download-volumes.yml).
 2. Select **Run workflow** (no inputs required).
 3. Wait for the run to finish. It downloads NDL PIDs `851646`–`851660` (volumes 1–15).
 4. Download the `hokusai-manga-lora-dataset` artifact from the run summary.
@@ -18,14 +46,40 @@ The packaging step converts pages to RGB JPEG, resizes the longest edge to at mo
 
 The workflow continues after individual page-download failures so it can package the pages that succeeded. If any download failed, the run is marked failed after the ZIP artifact is uploaded; inspect the per-volume `errors.txt` files in the artifact.
 
+## Agents (skills)
+
+| Skill | Schema | Workers | Writes |
+|-------|--------|---------|--------|
+| `getter` | `agents/skills/getter/skill.yaml` | `download_rolls.py`, `download_ndl_iiif.py` | `assets/<pid>/`, `docs/data/metadata.json` |
+| `packager` | `agents/skills/packager/skill.yaml` | `package_lora_dataset.py`, `build_img_index.py` | `dist/`, `docs/img/index.json` |
+| `reviewer` | `agents/skills/reviewer/skill.yaml` | `vlm_reviewer.py`, `hokusai_reviewer.py`, `batch_review.py`, `review_10_batch*.py` | `docs/data/hokusai_vlm_reviews.{jsonl,db}` |
+| `viewer` | `agents/skills/viewer/skill.yaml` | `generate_report.py` | `docs/dashboard.html` |
+
+All workers resolve paths from the repository root, so they can be run from any directory.
+
+## Data
+
+- Public data and VLM annotations: `docs/data/` (see [`docs/data/README.md`](docs/data/README.md))
+- Page images: `docs/images/`
+- Downloaded originals (gitignored): `assets/`
+
 ## Run locally
 
-Python 3.10+ for downloading; Pillow is needed to prepare the compact dataset:
+Python 3.10+ and Pillow (for packaging):
 
 ```bash
-python scripts/download_ndl_iiif.py --pid 851659 --output output
+# 1. Download one volume (writes assets/851659/ and updates docs/data/metadata.json)
+python agents/skills/getter/download_ndl_iiif.py --pid 851659 --output assets
+
+# 2. Package the compact LoRA dataset
 python -m pip install Pillow
-python scripts/package_lora_dataset.py --input output --output dist --max-side 1024 --quality 88
+python agents/skills/packager/package_lora_dataset.py --input assets --output dist --max-side 1024 --quality 88
+
+# 3. Build the image index for docs/viewer.html
+python agents/skills/packager/build_img_index.py
+
+# 4. Regenerate the VLM dashboard
+python agents/skills/viewer/generate_report.py
 ```
 
 Output ZIP: `dist/hokusai_manga_lora_dataset.zip`.
