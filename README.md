@@ -12,7 +12,7 @@ NDL IIIF-based research tools for preparing publicly accessible pages of Katsush
 │   ├── index.html            # ランディングページ
 │   ├── dashboard.html        # VLM レビュー集計（viewer skill が生成）
 │   ├── viewer.html           # 巻メタデータビューア
-│   ├── recap.html            # 直近セッションの作業サマリ
+│   ├── recap.html            # 直近セッションの作業サマリ（RECAP.md は Markdown 版）
 │   ├── plotly.min.js         # 同梱 plotly.js（ダッシュボードが相対参照）
 │   ├── demo/                 # デモ用スクリーンショット（index.html から掲載）
 │   ├── images/               # 114枚のページ画像（720px幅）
