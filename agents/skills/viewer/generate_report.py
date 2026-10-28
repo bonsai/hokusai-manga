@@ -228,6 +228,43 @@ def build_dashboard(
 
     stats = compute_stats([i for i in all_images if not i.get("_error")])
 
+    # ── metadata aggregates (tags / volumes) ──
+    tag_counts: Counter = Counter()
+    vol_counts: Counter = Counter()
+    detail_data: list[dict] = []
+    for r in all_images:
+        raw_cat = r.get("_raw_category") or r.get("category", "unknown")
+        tags = [t.strip() for t in str(raw_cat).split("|") if t.strip()]
+        tag_counts.update(tags)
+        m = re.match(r"^(\d{6})_", r["image"])
+        if m:
+            vol_counts[int(m.group(1)) - 851645] += 1
+        detail_data.append({
+            "image": r["image"],
+            "subject": r.get("subject") or "",
+            "category": r.get("category", "unknown"),
+            "tags": tags,
+            "style_notes": r.get("style_notes") or "",
+            "notes": r.get("error") or r.get("notes") or "",
+            "suit": r.get("training_suitability", 0),
+            "quality": r.get("lora_quality") or {},
+            "error": bool(r.get("_error")),
+            "raw": r.get("_raw_response") or "",
+        })
+
+    tag_labels = [t for t, _ in tag_counts.most_common()]
+    tag_values = [tag_counts[t] for t in tag_labels]
+    tag_colors = [CAT_CSS.get(t, "#999") for t in tag_labels]
+    vol_labels = [f"Vol {v}" for v in sorted(vol_counts)]
+    vol_values = [vol_counts[v] for v in sorted(vol_counts)]
+
+    def _js(obj) -> str:
+        return json.dumps(obj, ensure_ascii=False).replace("</", "<\\/")
+
+    detail_json = _js(detail_data)
+    img_json = _js(img_dir or "")
+    cat_json = _js(CAT_CSS)
+
     # ── category options ──
     cat_opts = "".join(
         f'<option value="{c}">{c.replace("_", " ").title()}</option>'
@@ -246,7 +283,7 @@ def build_dashboard(
         clr = _suit_color(suit)
         border = 'border:2px solid #e74c3c' if is_err else ""
         cards_html += (
-            f'<div class="img-card" data-i="{i}" data-cat="{cat}" data-suit="{suit}" data-name="{r["image"]}" style="{border}">'
+            f'<div class="img-card" data-i="{i}" data-cat="{cat}" data-suit="{suit}" data-name="{r["image"]}" style="cursor:pointer;{border}" onclick="openDetail({i})">'
             f'<div style="text-align:center;padding:8px">{img_tag(r["image"], img_dir, "150px")}</div>'
             f'<div style="padding:0 10px 10px">'
             f'<div style="font-weight:bold;font-size:11px;margin-bottom:4px">{r["image"]}</div>'
@@ -288,13 +325,14 @@ def build_dashboard(
             f'<tr><td style="padding:6px;font-weight:bold;border-bottom:1px solid #e0e0e0">Category</td><td style="padding:6px;border-bottom:1px solid #e0e0e0">{cat}</td></tr>'
             f'<tr><td style="padding:6px;font-weight:bold;border-bottom:1px solid #e0e0e0">Suitability</td><td style="padding:6px;border-bottom:1px solid #e0e0e0">{suit}/10</td></tr>'
             f'<tr><td style="padding:6px;font-weight:bold">LoRA Quality</td><td style="padding:6px">{qs} (L/C/C/A)</td></tr>'
+            f'<tr><td colspan="2" style="padding:6px;text-align:right"><button onclick="openDetail({i})" style="padding:4px 12px;border:1px solid #3949ab;background:#fff;color:#3949ab;border-radius:6px;cursor:pointer;font-size:11px">🔍 詳細 / 読み上げ</button></td></tr>'
             f'</table></td></tr>'
         )
         toggle_rows += row
 
         list_rows += (
             f'<tr class="lrow" data-i="{i}" data-cat="{cat}" data-suit="{suit}" data-name="{r["image"]}" style="{bg}">'
-            f'<td style="text-align:center">{img_tag(r["image"], img_dir, "80px")}</td>'
+            f'<td style="text-align:center;cursor:pointer" onclick="openDetail({i})">{img_tag(r["image"], img_dir, "80px")}</td>'
             f'<td style="font-weight:bold;font-size:11px">{r["image"]}</td>'
             f'<td style="font-size:11px;color:#7f8c8d;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{subj}</td>'
             f'<td><span class="cat-badge" style="background:{CAT_CSS.get(cat,"#eee")};color:{clr}">{cat.replace("_"," ").title()}</span></td>'
@@ -317,9 +355,9 @@ def build_dashboard(
 
     # ── Grouped by category HTML ──
     grouped = OrderedDict()
-    for r in all_images:
+    for i, r in enumerate(all_images):
         c = r.get("category", "unknown")
-        grouped.setdefault(c, []).append(r)
+        grouped.setdefault(c, []).append((i, r))
     group_html = ""
     for cat, items in grouped.items():
         clr = CAT_CSS.get(cat, "#757575")
@@ -329,12 +367,12 @@ def build_dashboard(
             f'{cat.replace("_", " ").title()} ({len(items)})</div>'
             f'<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;padding:10px">'
         )
-        for r in items:
+        for idx, r in items:
             suit = r.get("training_suitability", 0)
             subj = (r.get("subject") or "")[:60]
             sc = _suit_color(suit)
             group_html += (
-                f'<div style="background:#fff;border:1px solid #ddd;border-radius:6px;padding:8px;text-align:center">'
+                f'<div style="background:#fff;border:1px solid #ddd;border-radius:6px;padding:8px;text-align:center;cursor:pointer" onclick="openDetail({idx})">'
                 f'{img_tag(r["image"], img_dir, "100px")}'
                 f'<div style="font-size:10px;font-weight:bold;margin-top:4px">{r["image"]}</div>'
                 f'<div style="font-size:9px;color:#666;margin-top:2px">{subj}</div>'
@@ -376,6 +414,11 @@ def build_dashboard(
         "dist_labels": dist_labels,
         "dist_values": dist_values,
         "dist_colors": dist_colors,
+        "tag_labels": tag_labels,
+        "tag_values": tag_values,
+        "tag_colors": tag_colors,
+        "vol_labels": vol_labels,
+        "vol_values": vol_values,
     })
 
     plotly_layout = json.dumps({
@@ -384,6 +427,199 @@ def build_dashboard(
         "font": {"family": "Inter,sans-serif", "size": 12, "color": "#555"},
         "margin": {"t": 10, "b": 30, "l": 40, "r": 20},
     })
+
+    extra_css = """
+/* Tag view */
+.tag-sec { margin-bottom: 20px; }
+.tag-head { color: #fff; padding: 7px 12px; border-radius: 8px 8px 0 0; font-weight: 700; font-size: 13px; }
+.tag-sec .gv { margin: 0; padding: 12px; background: #fff; border-radius: 0 0 12px 12px; box-shadow: 0 1px 6px rgba(0,0,0,.08); }
+
+/* Detail modal */
+.modal { position: fixed; inset: 0; background: rgba(15,20,40,.72); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 18px; }
+.modal-card { background: #fff; border-radius: 14px; max-width: 1080px; width: 100%; max-height: 92vh; overflow: auto; box-shadow: 0 20px 60px rgba(0,0,0,.4); position: relative; }
+.modal-close { position: sticky; top: 10px; float: right; margin: 10px 10px 0 0; z-index: 2; border: 1px solid #ddd; background: #fff; border-radius: 50%; width: 32px; height: 32px; font-size: 18px; line-height: 1; cursor: pointer; }
+.modal-close:hover { background: #f0f2f5; }
+.detail-grid { display: grid; grid-template-columns: minmax(240px, 400px) 1fr; gap: 22px; padding: 22px; }
+.detail-img { width: 100%; border-radius: 10px; border: 1px solid #eee; background: #fafafa; }
+.detail-file { font-size: 11px; color: #95a5a6; text-align: center; margin-top: 6px; word-break: break-all; }
+.detail-subject { font-size: 17px; color: #1a237e; line-height: 1.4; margin-bottom: 10px; padding-right: 28px; }
+.detail-badges { margin-bottom: 14px; }
+.badge-tag { display: inline-block; padding: 2px 9px; border-radius: 999px; color: #fff; font-size: 11px; font-weight: 600; margin: 0 4px 4px 0; }
+.badge-suit { display: inline-block; padding: 2px 9px; border-radius: 999px; color: #fff; font-size: 11px; font-weight: 700; margin: 0 4px 4px 0; }
+.detail-block { margin-bottom: 14px; }
+.detail-label { font-size: 11px; font-weight: 700; color: #95a5a6; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
+.detail-text { font-size: 13px; line-height: 1.65; color: #444; white-space: pre-wrap; }
+.detail-text.err { color: #c62828; }
+.qrow { display: grid; grid-template-columns: 110px 1fr 28px; gap: 8px; align-items: center; font-size: 12px; margin-bottom: 5px; color: #555; }
+.qbar { height: 7px; background: #eef0f4; border-radius: 999px; overflow: hidden; }
+.qbar i { display: block; height: 100%; background: linear-gradient(90deg,#3949ab,#5c6bc0); }
+.detail-raw { margin-top: 6px; font-size: 12px; color: #666; }
+.detail-raw summary { cursor: pointer; font-weight: 600; }
+pre.raw { white-space: pre-wrap; word-break: break-word; background: #f7f8fa; border: 1px solid #eee; border-radius: 8px; padding: 10px; font-size: 11px; max-height: 240px; overflow: auto; margin-top: 8px; }
+.modal-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 0 22px 22px; }
+.btn { padding: 7px 14px; border: 1px solid #3949ab; background: #fff; color: #3949ab; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600; }
+.btn:hover { background: #3949ab; color: #fff; }
+.btn.rec { background: #3949ab; color: #fff; }
+.btn.rec:hover { background: #283593; border-color: #283593; }
+.seq-pos { font-size: 12px; color: #7f8c8d; margin-left: auto; }
+@media (max-width: 800px) { .detail-grid { grid-template-columns: 1fr; } }
+"""
+
+    extra_js = """
+function esc(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+function catColor(t) { return CC[t] || '#607d8b'; }
+
+let seqOrder = [], seqPos = -1, current = -1, speaking = false;
+
+function visibleOrder() {
+  return [...document.querySelectorAll('#gv .img-card')]
+    .filter(e => e.style.display !== 'none')
+    .map(e => parseInt(e.dataset.i, 10));
+}
+
+function qualityRows(q) {
+  const keys = [['linework','Linework'], ['contrast','Contrast'], ['composition','Composition'], ['artifact_free','Artifact-free']];
+  return keys.map(([k, label]) => {
+    const v = q[k];
+    const pct = Math.max(0, Math.min(100, (Number(v) || 0) * 10));
+    return `<div class="qrow"><span>${label}</span><div class="qbar"><i style="width:${pct}%"></i></div><b>${v == null ? '-' : v}</b></div>`;
+  }).join('');
+}
+
+function openDetail(i, keepOrder) {
+  const d = DATA[i];
+  if (!d) return;
+  current = i;
+  if (!keepOrder || seqOrder.indexOf(i) < 0) seqOrder = visibleOrder();
+  seqPos = seqOrder.indexOf(i);
+  if (seqPos < 0) { seqOrder = [i]; seqPos = 0; }
+  stopSpeak();
+
+  const q = d.quality || {};
+  const tags = (d.tags || []).map(t => `<span class="badge-tag" style="background:${catColor(t)}">${esc(String(t).replace(/_/g, ' '))}</span>`).join('');
+  const suitColor = d.suit >= 8 ? '#2e7d32' : d.suit >= 6 ? '#f57f17' : '#c62828';
+  const body = document.getElementById('detailBody');
+  body.innerHTML = `
+    <div class="detail-left">
+      <img class="detail-img" src="${IMG}/${esc(d.image)}" alt="${esc(d.image)}" loading="eager">
+      <div class="detail-file">${esc(d.image)}</div>
+    </div>
+    <div class="detail-right">
+      <h2 class="detail-subject">${esc(d.subject || '(no subject)')}</h2>
+      <div class="detail-badges">${tags}<span class="badge-suit" style="background:${suitColor}">Suitability ${d.suit}/10</span></div>
+      ${d.style_notes ? `<div class="detail-block"><div class="detail-label">Style notes</div><div class="detail-text">${esc(d.style_notes)}</div></div>` : ''}
+      <div class="detail-block"><div class="detail-label">Notes / comment</div><div class="detail-text${d.error ? ' err' : ''}">${esc(d.notes || '(none)')}</div></div>
+      <div class="detail-block"><div class="detail-label">LoRA quality</div>${qualityRows(q)}</div>
+      <details class="detail-raw"><summary>Raw VLM response</summary><pre class="raw" id="rawBox"></pre></details>
+    </div>`;
+  const raw = document.getElementById('rawBox');
+  if (raw) raw.textContent = d.raw || '(no raw response)';
+  document.getElementById('seqPos').textContent = `${seqPos + 1} / ${seqOrder.length}`;
+  document.getElementById('detailModal').classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+  updateSpeakBtn();
+}
+
+function closeDetail() {
+  stopSpeak();
+  document.getElementById('detailModal').classList.add('hidden');
+  document.body.style.overflow = '';
+}
+
+function step(dir) {
+  if (!seqOrder.length) return;
+  seqPos = (seqPos + dir + seqOrder.length) % seqOrder.length;
+  openDetail(seqOrder[seqPos], true);
+}
+
+function startSeq() {
+  const order = visibleOrder();
+  if (!order.length) return;
+  seqOrder = order; seqPos = 0;
+  openDetail(order[0], true);
+}
+
+function toggleSpeak() {
+  if (!window.speechSynthesis) { alert('このブラウザは読み上げに対応していません'); return; }
+  if (speaking) { stopSpeak(); return; }
+  const d = DATA[current];
+  if (!d) return;
+  const parts = [];
+  if (d.subject) parts.push(d.subject);
+  if (d.style_notes) parts.push('スタイル。' + d.style_notes);
+  if (d.notes) parts.push('注記。' + d.notes);
+  if (d.tags && d.tags.length) parts.push('タグ。' + d.tags.join('、'));
+  parts.push('学習適性。' + d.suit + '点。');
+  const text = parts.join('。');
+  const ja = /[\u3040-\u30ff\u3400-\u9fff]/.test(text);
+  const u = new window.SpeechSynthesisUtterance(text);
+  u.lang = ja ? 'ja-JP' : 'en-US';
+  const v = window.speechSynthesis.getVoices().find(x => x.lang && x.lang.toLowerCase().startsWith(ja ? 'ja' : 'en'));
+  if (v) u.voice = v;
+  u.rate = 1.0;
+  u.onend = () => { speaking = false; updateSpeakBtn(); };
+  u.onerror = () => { speaking = false; updateSpeakBtn(); };
+  speaking = true;
+  updateSpeakBtn();
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(u);
+}
+
+function stopSpeak() {
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
+  speaking = false;
+  updateSpeakBtn();
+}
+
+function updateSpeakBtn() {
+  const b = document.getElementById('speakBtn');
+  if (b) b.textContent = speaking ? '⏹ 停止' : '🔊 読み上げ';
+}
+
+function buildTags() {
+  const root = document.getElementById('tagRoot');
+  if (!root) return;
+  const map = new Map();
+  DATA.forEach((d, i) => (d.tags && d.tags.length ? d.tags : ['unknown']).forEach(t => {
+    if (!map.has(t)) map.set(t, []);
+    const arr = map.get(t);
+    if (!arr.includes(i)) arr.push(i);
+  }));
+  const frag = document.createDocumentFragment();
+  [...map.entries()].sort((a, b) => b[1].length - a[1].length).forEach(([tag, ids]) => {
+    const sec = document.createElement('div'); sec.className = 'tag-sec';
+    const head = document.createElement('div'); head.className = 'tag-head'; head.style.background = catColor(tag);
+    head.textContent = tag.replace(/_/g, ' ') + ' (' + ids.length + ')';
+    const grid = document.createElement('div'); grid.className = 'gv';
+    ids.forEach(i => {
+      const d = DATA[i];
+      const card = document.createElement('div'); card.className = 'img-card'; card.style.cursor = 'pointer';
+      card.onclick = () => openDetail(i, true);
+      const img = document.createElement('img');
+      img.src = IMG + '/' + d.image; img.loading = 'lazy'; img.alt = d.image;
+      img.style.cssText = 'width:100%;aspect-ratio:1;object-fit:cover;display:block';
+      img.onerror = () => { img.style.background = '#ffebee'; img.alt = 'ERR'; img.removeAttribute('src'); };
+      const box = document.createElement('div'); box.style.padding = '8px';
+      const name = document.createElement('div'); name.textContent = d.image; name.style.cssText = 'font-weight:600;font-size:11px';
+      const sub = document.createElement('div'); sub.textContent = (d.subject || '').slice(0, 70); sub.style.cssText = 'font-size:10px;color:#7f8c8d;margin:3px 0';
+      const suit = document.createElement('div'); suit.textContent = d.suit + '/10';
+      suit.style.cssText = 'font-size:12px;font-weight:700;color:' + (d.suit >= 8 ? '#2e7d32' : d.suit >= 6 ? '#f57f17' : '#c62828');
+      box.append(name, sub, suit); card.append(img, box); grid.appendChild(card);
+    });
+    sec.append(head, grid); frag.appendChild(sec);
+  });
+  root.replaceChildren(frag);
+}
+
+document.addEventListener('keydown', e => {
+  if (document.getElementById('detailModal').classList.contains('hidden')) return;
+  if (e.key === 'Escape') closeDetail();
+  else if (e.key === 'ArrowRight') { e.preventDefault(); step(1); }
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); step(-1); }
+});
+"""
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -463,6 +699,7 @@ body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Rob
     .ctrls {{ flex-direction: column; align-items: stretch; }}
     .vtog {{ margin-left: 0; justify-content: center; }}
 }}
+{extra_css}
 </style>
 </head>
 <body>
@@ -485,6 +722,8 @@ body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Rob
             <div class="sc"><div class="lbl">Total Images</div><div class="val">{stats["total"]}</div><div class="sub">annotated images</div></div>
             <div class="sc"><div class="lbl">Avg Suitability</div><div class="val">{stats["avg_suitability"]}</div><div class="sub">/10 ({stats["median_suitability"]} median)</div></div>
             <div class="sc"><div class="lbl">Categories</div><div class="val">{len(stats["categories"])}</div><div class="sub">distinct types</div></div>
+            <div class="sc"><div class="lbl">Volumes</div><div class="val">{len(vol_counts)}</div><div class="sub">detected from filenames</div></div>
+            <div class="sc"><div class="lbl">Tags</div><div class="val">{len(tag_counts)}</div><div class="sub">category tokens</div></div>
             <div class="sc"><div class="lbl">Linework</div><div class="val">{stats["quality"].get("linework",0):.1f}</div><div class="sub">/10 avg quality</div></div>
             <div class="sc err"><div class="lbl">Errors</div><div class="val">{err_count}</div><div class="sub">{err_pct}% timeout/unparseable</div></div>
         </div>
@@ -502,6 +741,7 @@ body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Rob
             <button id="bList" onclick="setView('list')">☰ List</button>
             <button id="bGroup" onclick="setView('group')">📁 Group</button>
             <button id="bGraph" onclick="setView('graph')">📈 Graph</button>
+            <button id="bTags" onclick="setView('tags')">🏷 Tags</button>
         </div>
         <label style="margin-left:16px">Sort</label>
         <select id="selSort" onchange="apply()">
@@ -525,6 +765,7 @@ body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Rob
         </select>
         <button onclick="reset()">Reset</button>
         <button onclick="errorsOnly()">Errors Only</button>
+        <button onclick="startSeq()">▶ 順番に見る</button>
     </div>
 
     <div class="info" id="info">Showing 0 / {stats["total"]}</div>
@@ -543,6 +784,9 @@ body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Rob
     <!-- Grouped by Category -->
     <div class="grp hidden" id="grp">{group_html}</div>
 
+    <!-- Grouped by Tags (rebuilt from category tokens) -->
+    <div class="grp hidden" id="tags"><div id="tagRoot"></div></div>
+
     <!-- Graph / Charts Focus -->
     <div class="graph hidden" id="graph">
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(400px,1fr));gap:20px;margin-bottom:20px">
@@ -552,6 +796,10 @@ body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Rob
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(400px,1fr));gap:20px">
             <div class="cc"><h3>🎯 LoRA Quality Radar</h3><div id="chQual" style="height:400px"></div></div>
             <div class="cc"><h3>🥧 Suitability Ranges</h3><div id="chDist" style="height:400px"></div></div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(400px,1fr));gap:20px;margin-top:20px">
+            <div class="cc"><h3>📚 Volume Distribution</h3><div id="chVol" style="height:400px"></div></div>
+            <div class="cc"><h3>🏷 Tag Distribution</h3><div id="chTag" style="height:400px"></div></div>
         </div>
     </div>
 
@@ -566,11 +814,28 @@ body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Rob
     <!-- Errors -->
     {err_html}
 
+    <!-- Detail modal: image / comments / TTS / sequential navigation -->
+    <div class="modal hidden" id="detailModal" onclick="if(event.target===this)closeDetail()">
+        <div class="modal-card" role="dialog" aria-modal="true" aria-label="Image detail">
+            <button class="modal-close" onclick="closeDetail()" aria-label="Close">×</button>
+            <div class="detail-grid" id="detailBody"></div>
+            <div class="modal-actions">
+                <button class="btn" onclick="step(-1)">← 前</button>
+                <button class="btn" onclick="step(1)">次 →</button>
+                <button class="btn rec" id="speakBtn" onclick="toggleSpeak()">🔊 読み上げ</button>
+                <span class="seq-pos" id="seqPos"></span>
+            </div>
+        </div>
+    </div>
+
 </div>
 
 <script>
 const D = {plotly_data};
 const L = {plotly_layout};
+const DATA = {detail_json};
+const IMG = {img_json};
+const CC = {cat_json};
 
 Plotly.newPlot('chCat', [{{type:'pie', labels:D.cat_labels, values:D.cat_values, hole:.5, marker:{{colors:D.cat_colors}}}}], Object.assign({{showlegend:true, legend:{{font:{{size:11}}}}}}, L));
 
@@ -580,14 +845,26 @@ Plotly.newPlot('chQual', [{{type:'radar', labels:D.qual_labels, values:D.qual_va
 
 Plotly.newPlot('chDist', [{{type:'pie', labels:D.dist_labels, values:D.dist_values, hole:.45, marker:{{colors:D.dist_colors}}}}], Object.assign({{showlegend:true, legend:{{font:{{size:11}}}}}}, L));
 
+Plotly.newPlot('chVol', [{{type:'bar', x:D.vol_labels, y:D.vol_values, marker:{{color:'#3949ab'}}, text:D.vol_values, textposition:'auto'}}], Object.assign({{xaxis:{{title:'Volume'}}, yaxis:{{title:'Images', rangemode:'tozero'}}}}, L));
+
+Plotly.newPlot('chTag', [{{type:'bar', orientation:'h', y:D.tag_labels, x:D.tag_values, marker:{{color:D.tag_colors}}, text:D.tag_values, textposition:'auto'}}], Object.assign({{}}, L, {{margin:{{l:120, r:20, t:10, b:30}}, xaxis:{{title:'Images', rangemode:'tozero'}}, yaxis:{{automargin:true}}}}));
+
+buildTags();
+
 // ── View toggle ──
 function setView(v) {{
-    const views = ['glance','grid','list','group','graph','tv'];
+    const views = ['glance','grid','list','group','graph','tags','tv'];
     views.forEach(n => document.getElementById(n).classList.add('hidden'));
     document.getElementById(v).classList.remove('hidden');
     document.querySelectorAll('.vtog button').forEach(b=>b.classList.remove('on'));
-    const idMap = {{glance:'bGlance',grid:'bGrid',list:'bList',group:'bGroup',graph:'bGraph'}};
+    const idMap = {{glance:'bGlance',grid:'bGrid',list:'bList',group:'bGroup',graph:'bGraph',tags:'bTags'}};
     if(idMap[v]) document.getElementById(idMap[v]).classList.add('on');
+    if(v === 'graph') {{
+        setTimeout(() => ['chCat','chSuit','chQual','chDist','chVol','chTag'].forEach(id => {{
+            const el = document.getElementById(id);
+            if(el) Plotly.Plots.resize(el);
+        }}), 60);
+    }}
     apply();
 }}
 
@@ -663,6 +940,8 @@ function errorsOnly() {{
     document.getElementById('selSuit').value = '0-3';
     apply();
 }}
+
+{extra_js}
 </script>
 
 </body>
