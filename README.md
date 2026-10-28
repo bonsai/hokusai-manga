@@ -116,8 +116,8 @@ All workers resolve paths from the repository root, so they can be run from any 
 - **Network** — tag co-occurrence SVG (embedded at build time; downloadable)
 - **Detail** — click any card or list thumbnail to open full comments (subject, style notes, notes, quality bars, raw VLM response)
 - **Search** — one box filters image name / subject / notes across Grid, List and Group; press `/` to focus it
-- **読み上げ** — speak the current detail via the Web Speech API (ja-JP / en-US auto)
-- **順番に見る** — sequential viewer over the current filter/sort; use ← / → keys, Esc to close
+- **読み上げ** — speak the current detail via the Web Speech API (ja-JP / en-US auto); **Space** toggles speak/stop
+- **順番に見る** — sequential viewer over the current filter/sort; ← / → move, Space toggles 読み上げ, Esc closes
 
 ### Screenshots
 

@@ -922,17 +922,24 @@ function downloadNetwork() {
 
 document.addEventListener('keydown', e => {
   const modalEl = document.getElementById('detailModal');
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '');
   if (!modalEl || modalEl.classList.contains('hidden')) {
     // "/" jumps to the search box when no modal is open.
-    if (e.key === '/' && document.activeElement?.tagName !== 'INPUT') {
+    if (e.key === '/' && !typing) {
       const q = document.getElementById('selQ');
       if (q) { e.preventDefault(); q.focus(); q.select(); }
     }
     return;
   }
+  if (typing) return;                      // never hijack keys while typing
   if (e.key === 'Escape') closeDetail();
   else if (e.key === 'ArrowRight') { e.preventDefault(); step(1); }
   else if (e.key === 'ArrowLeft') { e.preventDefault(); step(-1); }
+  else if (e.code === 'Space' || e.key === ' ') {
+    // Space toggles 読み上げ (speak / stop) instead of scrolling.
+    e.preventDefault();
+    toggleSpeak();
+  }
 });
 """
 
@@ -1151,7 +1158,8 @@ body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Rob
             <div class="modal-actions">
                 <button class="btn" onclick="step(-1)">← 前</button>
                 <button class="btn" onclick="step(1)">次 →</button>
-                <button class="btn rec" id="speakBtn" onclick="toggleSpeak()">🔊 読み上げ</button>
+                <button class="btn rec" id="speakBtn" onclick="toggleSpeak()" title="Space キーでも切り替え">🔊 読み上げ</button>
+                <span class="muted" style="font-size:11px;color:#7b8794">← / → 移動 · Space 読み上げ · Esc 閉じる</span>
                 <span class="seq-pos" id="seqPos"></span>
             </div>
         </div>
