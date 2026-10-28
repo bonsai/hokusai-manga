@@ -37,7 +37,14 @@ from pydantic import BaseModel
 
 # Import the shared renderer/data loaders from the sibling worker
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from generate_report import build_dashboard, collect_meta, compute_stats, load_all_images  # noqa: E402
+from generate_report import (  # noqa: E402
+    build_dashboard,
+    build_network_data,
+    build_network_svg,
+    collect_meta,
+    compute_stats,
+    load_all_images,
+)
 from vlm_demo import DEFAULT_PROMPT as VLM_DEFAULT_PROMPT, PAGE_HTML as VLM_PAGE_HTML  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -61,7 +68,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-for _mount, _dir in (("/images", IMAGES_DIR), ("/img", IMG_INDEX_DIR), ("/data", DATA_DIR)):
+for _mount, _dir in (("/images", IMAGES_DIR), ("/img", IMG_INDEX_DIR), ("/data", DATA_DIR),
+                     ("/demo", DOCS_DIR / "demo")):
     if _dir.exists():
         app.mount(_mount, StaticFiles(directory=str(_dir)), name=_mount.strip("/"))
 
@@ -388,6 +396,82 @@ def api_vlm(req: VLMRequest) -> JSONResponse:
         "model": data.get("model") or model,
         "elapsed_ms": round((time.perf_counter() - started) * 1000),
     })
+
+
+@app.get("/api/network")
+def api_network(min_weight: int = Query(default=1, ge=1, le=100)) -> JSONResponse:
+    data = get_data()
+    return JSONResponse(build_network_data(data["all_images"], min_weight=min_weight))
+
+
+@app.get("/api/network.svg")
+def api_network_svg(min_weight: int = Query(default=1, ge=1, le=100)) -> Response:
+    data = get_data()
+    return Response(
+        build_network_svg(data["all_images"], min_weight=min_weight),
+        media_type="image/svg+xml",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+NETWORK_PAGE = """<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hokusai Tag Network</title>
+<style>
+  :root { --bg:#f0f2f5; --panel:#fff; --text:#243044; --muted:#7b8794; --brand:#3949ab; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif; }
+  header { background:linear-gradient(135deg,#1a237e,#3949ab); color:#fff; padding:18px 22px; display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
+  header h1 { margin:0; font-size:20px; }
+  header p { margin:2px 0 0; font-size:12px; opacity:.85; }
+  header a { color:#fff; }
+  main { max-width:1280px; margin:0 auto; padding:18px; }
+  .bar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+  .panel { background:var(--panel); border-radius:14px; padding:12px; box-shadow:0 1px 6px rgba(0,0,0,.08); }
+  .panel svg { width:100%; height:auto; display:block; }
+  input, button { font:inherit; padding:7px 12px; border:1px solid #d5dbe6; border-radius:9px; background:#fff; }
+  button { background:var(--brand); color:#fff; border-color:var(--brand); font-weight:600; cursor:pointer; }
+  .muted { color:var(--muted); font-size:11px; }
+  .links { display:flex; gap:14px; flex-wrap:wrap; font-size:12px; }
+  .links a { color:var(--brand); font-weight:600; }
+</style>
+</head>
+<body>
+<header>
+  <div style="flex:1">
+    <a href="/">← Dashboard</a>
+    <h1>🕸 Hokusai Tag Network</h1>
+    <p>同じ画像に付与されたタグ同士を接続した共起ネットワーク（SVG）</p>
+  </div>
+</header>
+<main>
+  <form class="bar" method="get" action="/network">
+    <label>最小共起数 <input type="number" name="min_weight" min="1" max="100" value="__MIN__"></label>
+    <button type="submit">更新</button>
+    <span class="muted">ノード＝タグ（画像数）、線＝同じ画像に付与されたタグ</span>
+  </form>
+  <div class="panel">__SVG__</div>
+  <p class="links">
+    <a href="/api/network.svg?min_weight=__MIN__">SVGを開く</a>
+    <a href="/api/network?min_weight=__MIN__">JSON API</a>
+    <a href="/">ダッシュボード</a>
+  </p>
+  <p class="muted">このページの SVG は FastAPI が plotly 非依存の純 Python で生成しています。</p>
+</main>
+</body>
+</html>
+"""
+
+
+@app.get("/network", response_class=HTMLResponse)
+def network_page(min_weight: int = Query(default=1, ge=1, le=100)) -> HTMLResponse:
+    data = get_data()
+    svg = build_network_svg(data["all_images"], min_weight=min_weight)
+    html = NETWORK_PAGE.replace("__SVG__", svg).replace("__MIN__", str(min_weight))
+    return HTMLResponse(html)
 
 
 @app.get("/favicon.ico", include_in_schema=False)

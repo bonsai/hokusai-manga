@@ -1,5 +1,5 @@
 name: viewer
-version: 1.2.0
+version: 1.3.0
 description: "Hokusai VLM dashboard: FastAPI server and static HTML export, charts built with plotly.py."
 entry_point: server.py
 workers:
@@ -23,6 +23,9 @@ outputs:
     - GET /                 # dashboard
     - GET /viewer           # volume viewer
     - GET /vlm              # camera + VLM text demo
+    - GET /network          # tag co-occurrence SVG page
+    - GET /api/network      # network nodes/edges JSON
+    - GET /api/network.svg  # standalone network SVG
     - GET /api/get?ids=LATEST
     - GET /api/reviews
     - GET /api/stats

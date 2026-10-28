@@ -72,9 +72,21 @@ All workers resolve paths from the repository root, so they can be run from any 
 - **Grid / List / Group** — browse by card, table, or category
 - **Tags** — rebuilt groups from multi-label category tokens (an image can appear under several tags)
 - **Graph** — category, suitability, LoRA quality radar, suitability ranges, volume distribution, tag distribution
+- **Network** — tag co-occurrence SVG (embedded at build time; downloadable)
 - **Detail** — click any card or list thumbnail to open full comments (subject, style notes, notes, quality bars, raw VLM response)
+- **Search** — one box filters image name / subject / notes across Grid, List and Group; press `/` to focus it
 - **読み上げ** — speak the current detail via the Web Speech API (ja-JP / en-US auto)
 - **順番に見る** — sequential viewer over the current filter/sort; use ← / → keys, Esc to close
+
+### Screenshots
+
+`docs/index.html` shows three demo captures, generated headlessly from the running dashboard:
+
+- `docs/demo/dashboard-overview.png` — Glance (KPIs + top rated samples, controls on top)
+- `docs/demo/dashboard-graph.png` — Graph (all six plotly charts)
+- `docs/demo/dashboard-sequence.png` — 順番に見る (sequential detail viewer: 前 / 次 / 読み上げ)
+
+Regenerate them with `local/_demo_shots.mjs` (headless Chrome + CDP on port 9333, server on 3002). `local/` is git-ignored.
 
 ## Dashboard server (FastAPI + plotly.py)
 
@@ -86,6 +98,8 @@ python agents/skills/viewer/server.py        # http://127.0.0.1:3002
 
 The server reads `docs/data/` directly and serves images from `docs/images/`. It also hides the plotly.js CDN dependency by serving the copy bundled with the installed plotly.py.
 
+The tag network is generated with pure Python (no plotly/networkx): `/api/network.svg` returns SVG, `/api/network` returns nodes/edges, and `/network` is a standalone HTML page. The same SVG is embedded in the dashboard's **Network** tab.
+
 | Endpoint | Description |
 |----------|-------------|
 | `GET /` | Dashboard HTML |
@@ -95,6 +109,9 @@ The server reads `docs/data/` directly and serves images from `docs/images/`. It
 | `GET /api/stats` | Aggregates used by the dashboard |
 | `GET /api/metadata` | `docs/data/metadata.json` |
 | `GET /vlm` | Camera + VLM text demo |
+| `GET /network` | Tag co-occurrence network (SVG page) |
+| `GET /api/network` | Network nodes/edges as JSON |
+| `GET /api/network.svg` | Standalone SVG (supports `?min_weight=`) |
 | `GET /api/vlm/health` | VLM endpoint status (LM Studio / OpenAI compatible) |
 | `POST /api/vlm` | Send an image + prompt and return the VLM text |
 | `GET /healthz` | Health check |
@@ -121,11 +138,14 @@ Camera access requires `localhost` or HTTPS. If the VLM is not running, the page
 
 ## Static export (GitHub Pages)
 
-The static `docs/dashboard.html` is generated with plotly.py and loads plotly.js 2.27 from `cdn.plot.ly` (no unpkg / maplibre requests):
+The static `docs/dashboard.html` is generated with plotly.py and is fully self-contained: `docs/plotly.min.js` is emitted next to it from the installed plotly.py, so the page makes **no third-party requests** and works from `file://` as well. Charts render fine offline; images load from `docs/images/`.
 
 ```bash
-python agents/skills/viewer/generate_report.py
+python agents/skills/viewer/generate_report.py                 # bundled plotly.min.js (default)
+python agents/skills/viewer/generate_report.py --plotly-cdn    # opt into cdn.plot.ly instead
 ```
+
+`docs/plotly.min.js` (~4.7 MB) must be committed together with `docs/dashboard.html`.
 
 ## Run locally
 

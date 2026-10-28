@@ -9,10 +9,13 @@ import json
 import sqlite3
 import re
 import base64
+import math
 import argparse
 from pathlib import Path
 from datetime import datetime
 from collections import Counter, defaultdict, OrderedDict
+from html import escape
+from itertools import combinations
 
 # ── JSON extraction helpers ─────────────────────────────────────────────
 
@@ -201,6 +204,18 @@ def _suit_color(s: int) -> str:
     return "#c62828"
 
 
+def _attr(text: str) -> str:
+    """Escape a value for use inside a double-quoted HTML attribute."""
+    return (
+        (text or "")
+        .replace("&", "&amp;")
+        .replace('"', "&quot;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\n", " ")
+    )
+
+
 CAT_CSS = {
     "landscape": "#2e7d32",
     "daily_life": "#e65100",
@@ -215,8 +230,173 @@ CAT_CSS = {
     "error": "#c62828",
 }
 
-# Plotly 2.27 does not try to load maplibre CSS from unpkg.com.
+# Static export defaults to a locally bundled plotly.js so the dashboard works
+# offline and on GitHub Pages without any third-party CDN request.
+PLOTLY_JS_LOCAL = "plotly.min.js"
+# Opt-in fallback: Plotly 2.27 does not try to load maplibre CSS from unpkg.com.
 PLOTLY_JS_CDN = "https://cdn.plot.ly/plotly-2.27.0.min.js"
+
+
+def _force_layout(tag_list: list[str], pair_counts: Counter, width: int, height: int) -> dict[str, tuple[float, float]]:
+    """Small deterministic force layout for tag nodes (no external deps)."""
+    n = len(tag_list)
+    cx, cy = width / 2, height / 2
+    radius = min(width, height) * 0.32
+    pos = {
+        tag: (
+            cx + radius * math.cos(2 * math.pi * i / max(n, 1)),
+            cy + radius * math.sin(2 * math.pi * i / max(n, 1)),
+        )
+        for i, tag in enumerate(tag_list)
+    }
+    if n <= 1:
+        return pos
+
+    k = math.sqrt((width * height) / n)
+    max_w = max(pair_counts.values(), default=1) or 1
+    temperature = width / 7
+
+    for _ in range(120):
+        disp = {tag: [0.0, 0.0] for tag in tag_list}
+        for i, a in enumerate(tag_list):
+            ax, ay = pos[a]
+            for b in tag_list[i + 1:]:
+                bx, by = pos[b]
+                dx, dy = ax - bx, ay - by
+                dist = max(math.hypot(dx, dy), 0.01)
+                force = k * k / dist
+                ux, uy = dx / dist, dy / dist
+                disp[a][0] += ux * force
+                disp[a][1] += uy * force
+                disp[b][0] -= ux * force
+                disp[b][1] -= uy * force
+
+        for (a, b), w in pair_counts.items():
+            if a not in pos or b not in pos:
+                continue
+            ax, ay = pos[a]
+            bx, by = pos[b]
+            dx, dy = ax - bx, ay - by
+            dist = max(math.hypot(dx, dy), 0.01)
+            force = dist * dist / k * (0.55 + 0.9 * w / max_w)
+            ux, uy = dx / dist, dy / dist
+            disp[a][0] -= ux * force
+            disp[a][1] -= uy * force
+            disp[b][0] += ux * force
+            disp[b][1] += uy * force
+
+        for tag in tag_list:
+            dx, dy = disp[tag]
+            dist = max(math.hypot(dx, dy), 0.01)
+            step = min(dist, temperature)
+            pos[tag] = (pos[tag][0] + dx / dist * step, pos[tag][1] + dy / dist * step)
+        temperature *= 0.97
+
+    # Normalize into the canvas
+    pad_x, pad_top, pad_bottom = 90, 90, 90
+    xs = [p[0] for p in pos.values()]
+    ys = [p[1] for p in pos.values()]
+    span_x = max(max(xs) - min(xs), 1)
+    span_y = max(max(ys) - min(ys), 1)
+    scale = min((width - 2 * pad_x) / span_x, (height - pad_top - pad_bottom) / span_y)
+    for tag, (x, y) in list(pos.items()):
+        pos[tag] = (
+            pad_x + (x - min(xs)) * scale,
+            pad_top + (y - min(ys)) * scale,
+        )
+    return pos
+
+
+def build_network_data(all_images: list[dict], min_weight: int = 1) -> dict:
+    """Build tag co-occurrence nodes/edges (tags assigned to the same image)."""
+    tag_counts: Counter = Counter()
+    pair_counts: Counter = Counter()
+    used = 0
+    for r in all_images:
+        if r.get("_error"):
+            continue
+        raw = r.get("_raw_category") or r.get("category", "unknown")
+        tags = sorted({t.strip() for t in str(raw).split("|") if t.strip()})
+        if not tags:
+            continue
+        used += 1
+        tag_counts.update(tags)
+        for a, b in combinations(tags, 2):
+            pair_counts[(a, b)] += 1
+
+    tags = [t for t, _ in tag_counts.most_common()]
+    if not tags:
+        return {"nodes": [], "edges": [], "images": used, "min_weight": min_weight}
+
+    width, height = 900, 620
+    pos = _force_layout(tags, pair_counts, width, height)
+    max_count = max(tag_counts.values()) or 1
+    nodes = []
+    for tag in tags:
+        count = tag_counts[tag]
+        nodes.append({
+            "id": tag,
+            "label": tag.replace("_", " ").title(),
+            "count": count,
+            "radius": round(16 + 26 * math.sqrt(count / max_count), 1),
+            "color": CAT_CSS.get(tag, "#607d8b"),
+            "x": round(pos[tag][0], 1),
+            "y": round(pos[tag][1], 1),
+        })
+    edges = [
+        {"source": a, "target": b, "weight": w}
+        for (a, b), w in sorted(pair_counts.items(), key=lambda kv: (-kv[1], kv[0]))
+        if w >= min_weight
+    ]
+    return {"nodes": nodes, "edges": edges, "images": used, "min_weight": min_weight}
+
+
+def build_network_svg(all_images: list[dict], min_weight: int = 1, width: int = 900, height: int = 620) -> str:
+    """Render the tag co-occurrence network as a standalone SVG string."""
+    data = build_network_data(all_images, min_weight=min_weight)
+    nodes = data["nodes"]
+    edges = data["edges"]
+    if not nodes:
+        return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 120"><text x="24" y="60" font-size="14" fill="#7b8794">No tag data.</text></svg>'
+
+    by_id = {n["id"]: n for n in nodes}
+    max_w = max((e["weight"] for e in edges), default=1) or 1
+    parts: list[str] = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" width="100%" role="img" aria-labelledby="netTitle netDesc">',
+        f'<title id="netTitle">Tag co-occurrence network</title>',
+        f'<desc id="netDesc">{data["images"]} images, {len(nodes)} tags, {len(edges)} links. Edge width shows images sharing both tags.</desc>',
+        '<style>'
+        '.net-node circle{stroke:#fff;stroke-width:2.5;transition:stroke .15s,stroke-width .15s}'
+        '.net-node:hover circle{stroke:#1a237e;stroke-width:4}'
+        '.net-node text{font:600 12px Inter,system-ui,sans-serif;fill:#243044;paint-order:stroke;stroke:#fff;stroke-width:3px;stroke-linejoin:round;pointer-events:none}'
+        '.net-edge{stroke:#94a3b8;stroke-linecap:round}'
+        '</style>',
+        f'<rect width="{width}" height="{height}" fill="#fff"/>',
+        f'<text x="28" y="34" font-size="16" font-weight="700" fill="#1a237e">🏷 Tag co-occurrence network</text>',
+        f'<text x="28" y="54" font-size="11" fill="#7b8794">Node size = images with tag · edge = images sharing both tags · min weight {min_weight}</text>',
+        f'<text x="{width - 28}" y="34" text-anchor="end" font-size="11" fill="#7b8794">{data["images"]} images / {len(edges)} links</text>',
+        '<g class="net-edges">',
+    ]
+    for e in edges:
+        a, b = by_id[e["source"]], by_id[e["target"]]
+        ratio = e["weight"] / max_w
+        parts.append(
+            f'<line class="net-edge" x1="{a["x"]}" y1="{a["y"]}" x2="{b["x"]}" y2="{b["y"]}" '
+            f'stroke-width="{1 + 2.4 * math.sqrt(ratio):.2f}" stroke-opacity="{0.12 + 0.48 * ratio:.2f}">'
+            f'<title>{escape(e["source"])} ↔ {escape(e["target"])}: {e["weight"]} images</title></line>'
+        )
+    parts.append('</g><g class="net-nodes">')
+    for n in nodes:
+        label = escape(n["label"])
+        parts.append(
+            f'<g class="net-node" data-tag="{escape(n["id"])}" data-count="{n["count"]}">'
+            f'<title>{label}: {n["count"]} images</title>'
+            f'<circle cx="{n["x"]}" cy="{n["y"]}" r="{n["radius"]}" fill="{n["color"]}"/>'
+            f'<text x="{n["x"]}" y="{n["y"] + n["radius"] + 17}" text-anchor="middle">{label}</text>'
+            f'</g>'
+        )
+    parts.append('</g></svg>')
+    return "".join(parts)
 
 
 def _fig_html(fig, div_id: str) -> str:
@@ -238,6 +418,12 @@ def _fig_html(fig, div_id: str) -> str:
         div_id=div_id,
         config={"responsive": True, "displayModeBar": False},
     )
+
+
+def _pie_text(values: list[int], min_ratio: float = 0.04) -> list[str]:
+    """Percentage labels, blank for slices too small to render without overlap."""
+    total = sum(values) or 1
+    return [f"{v / total * 100:.1f}%" if v / total >= min_ratio else "" for v in values]
 
 
 def build_figures(
@@ -274,8 +460,11 @@ def build_figures(
     fig_cat = go.Figure(go.Pie(
         labels=cat_labels, values=cat_values, hole=0.5,
         marker={"colors": cat_colors},
+        # Only label slices large enough to fit; tiny slices would overlap.
+        text=_pie_text(cat_values), textinfo="text",
+        hovertemplate="%{label}<br>%{value} images (%{percent})<extra></extra>",
     ))
-    fig_cat.update_layout(showlegend=True, legend={"font": {"size": 11}})
+    fig_cat.update_layout(showlegend=True, legend={"font": {"size": 11}}, margin={"t": 20, "b": 40, "l": 50, "r": 20})
 
     fig_suit = go.Figure(go.Bar(
         x=suit_labels, y=suit_values, marker_color=suit_colors,
@@ -294,8 +483,10 @@ def build_figures(
     fig_dist = go.Figure(go.Pie(
         labels=dist_labels, values=dist_values, hole=0.45,
         marker={"colors": dist_colors},
+        text=_pie_text(dist_values), textinfo="text",
+        hovertemplate="%{label}<br>%{value} images (%{percent})<extra></extra>",
     ))
-    fig_dist.update_layout(showlegend=True, legend={"font": {"size": 11}})
+    fig_dist.update_layout(showlegend=True, legend={"font": {"size": 11}}, margin={"t": 20, "b": 40, "l": 50, "r": 20})
 
     fig_vol = go.Figure(go.Bar(
         x=vol_labels, y=vol_values, marker_color="#3949ab",
@@ -376,7 +567,7 @@ def build_dashboard(
     img_dir: str,
     output: Path | None,
     title: str = "Hokusai Dashboard",
-    plotly_js: str = PLOTLY_JS_CDN,
+    plotly_js: str = PLOTLY_JS_LOCAL,
     vlm_demo_url: str | None = None,
 ) -> str:
     total = len(all_images)
@@ -419,8 +610,10 @@ def build_dashboard(
         subj = (r.get("subject") or "")[:80]
         clr = _suit_color(suit)
         border = "border:2px solid #e74c3c;" if is_err else ""
+        notes_txt = (r.get("error") or r.get("notes") or "")[:160]
         return (
             f'<div class="img-card" data-i="{i}" data-cat="{cat}" data-suit="{suit}" data-name="{r["image"]}" '
+            f'data-subj="{_attr(subj)}" data-notes="{_attr(notes_txt)}" '
             f'style="cursor:pointer;{border}" onclick="openDetail({i})" title="詳細を開く">'
             f'<div style="text-align:center;padding:8px">{img_tag(r["image"], img_dir, "150px")}</div>'
             f'<div style="padding:0 10px 10px">'
@@ -456,7 +649,8 @@ def build_dashboard(
         clr = _suit_color(suit)
         bg = "background:#fff5f5;" if is_err else ""
         list_rows += (
-            f'<tr class="lrow" data-i="{i}" data-cat="{cat}" data-suit="{suit}" data-name="{r["image"]}" style="{bg}">'
+            f'<tr class="lrow" data-i="{i}" data-cat="{cat}" data-suit="{suit}" data-name="{r["image"]}" '
+            f'data-subj="{_attr(subj)}" data-notes="{_attr(notes)}" style="{bg}">'
             f'<td style="text-align:center;cursor:pointer" onclick="openDetail({i})" title="詳細を開く">{img_tag(r["image"], img_dir, "80px")}</td>'
             f'<td style="font-weight:bold;font-size:11px">{r["image"]}</td>'
             f'<td style="font-size:11px;color:#7f8c8d;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{subj}</td>'
@@ -486,7 +680,9 @@ def build_dashboard(
             subj = (r.get("subject") or "")[:60]
             sc = _suit_color(suit)
             group_html += (
-                f'<div style="background:#fff;border:1px solid #ddd;border-radius:6px;padding:8px;text-align:center;cursor:pointer" onclick="openDetail({idx})">'
+                f'<div class="img-card gcard" data-i="{idx}" data-cat="{cat}" data-suit="{suit}" data-name="{r["image"]}" '
+                f'data-subj="{_attr(subj)}" data-notes="{_attr((r.get("error") or r.get("notes") or "")[:160])}" '
+                f'style="background:#fff;border:1px solid #ddd;border-radius:6px;padding:8px;text-align:center;cursor:pointer" onclick="openDetail({idx})">'
                 f'{img_tag(r["image"], img_dir, "100px")}'
                 f'<div style="font-size:10px;font-weight:bold;margin-top:4px">{r["image"]}</div>'
                 f'<div style="font-size:9px;color:#666;margin-top:2px">{subj}</div>'
@@ -496,11 +692,13 @@ def build_dashboard(
         group_html += "</div></div>"
 
     figures = build_figures(stats, tag_labels, tag_values, tag_colors, vol_labels, vol_values)
+    network_svg = build_network_svg(all_images)
 
     demo_link = (
         f'&nbsp;|&nbsp; <a href="{vlm_demo_url}" style="color:#fff;text-decoration:underline">📷 VLM Demo</a>'
         if vlm_demo_url else ""
     )
+    img_err_suffix = f' / {err_count} errors' if err_count else ""
 
     extra_css = """
 /* Tag view */
@@ -536,6 +734,8 @@ pre.raw { white-space: pre-wrap; word-break: break-word; background: #f7f8fa; bo
 .btn.rec { background: #3949ab; color: #fff; }
 .btn.rec:hover { background: #283593; border-color: #283593; }
 .seq-pos { font-size: 12px; color: #7f8c8d; margin-left: auto; }
+.netwrap { background:#fff; border-radius:12px; padding:8px; box-shadow:0 1px 6px rgba(0,0,0,.08); overflow:hidden; }
+.netwrap svg { width:100%; height:auto; display:block; }
 @media (max-width: 800px) { .detail-grid { grid-template-columns: 1fr; } }
 """
 
@@ -706,9 +906,30 @@ function buildTags() {
   root.replaceChildren(frag);
 }
 
+function downloadNetwork() {
+  const svg = document.querySelector('#network svg');
+  if (!svg) return;
+  const source = new XMLSerializer().serializeToString(svg);
+  const blob = new Blob([source], { type: 'image/svg+xml;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'hokusai-tag-network.svg';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
 document.addEventListener('keydown', e => {
   const modalEl = document.getElementById('detailModal');
-  if (!modalEl || modalEl.classList.contains('hidden')) return;
+  if (!modalEl || modalEl.classList.contains('hidden')) {
+    // "/" jumps to the search box when no modal is open.
+    if (e.key === '/' && document.activeElement?.tagName !== 'INPUT') {
+      const q = document.getElementById('selQ');
+      if (q) { e.preventDefault(); q.focus(); q.select(); }
+    }
+    return;
+  }
   if (e.key === 'Escape') closeDetail();
   else if (e.key === 'ArrowRight') { e.preventDefault(); step(1); }
   else if (e.key === 'ArrowLeft') { e.preventDefault(); step(-1); }
@@ -802,7 +1023,8 @@ body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Rob
     <h1>🎨 Hokusai Manga — VLM Review Dashboard</h1>
     <div class="meta">
         Generated: {datetime.now():%Y-%m-%d %H:%M:%S}
-        &nbsp;|&nbsp; {stats["total"]} images
+        &nbsp;|&nbsp; {stats["total"]} images{img_err_suffix}
+        &nbsp;|&nbsp; {len(vol_counts)} volumes &nbsp;|&nbsp; {len(tag_counts)} tags
         &nbsp;|&nbsp; Avg Suitability: {stats["avg_suitability"]}/10
         {demo_link}
     </div>
@@ -810,24 +1032,7 @@ body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Rob
 
 <div class="c">
 
-    <!-- GLANCE View: Summary + stats + sample cards -->
-    <div class="glance" id="glance">
-        <h3 style="color:#1a237e;margin-bottom:12px">📊 Dataset Overview</h3>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-bottom:20px">
-            <div class="sc"><div class="lbl">Total Images</div><div class="val">{stats["total"]}</div><div class="sub">annotated images</div></div>
-            <div class="sc"><div class="lbl">Avg Suitability</div><div class="val">{stats["avg_suitability"]}</div><div class="sub">/10 ({stats["median_suitability"]} median)</div></div>
-            <div class="sc"><div class="lbl">Categories</div><div class="val">{len(stats["categories"])}</div><div class="sub">distinct types</div></div>
-            <div class="sc"><div class="lbl">Volumes</div><div class="val">{len(vol_counts)}</div><div class="sub">detected from filenames</div></div>
-            <div class="sc"><div class="lbl">Tags</div><div class="val">{len(tag_counts)}</div><div class="sub">category tokens</div></div>
-            <div class="sc"><div class="lbl">Linework</div><div class="val">{stats["quality"].get("linework",0):.1f}</div><div class="sub">/10 avg quality</div></div>
-            <div class="sc err"><div class="lbl">Errors</div><div class="val">{err_count}</div><div class="sub">{err_pct}% timeout/unparseable</div></div>
-        </div>
-        <h3 style="color:#1a237e;margin:0 0 10px">⭐ Top rated samples</h3>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px">
-            {sample_html}
-        </div>
-    </div>
-
+    <!-- Controls (kept above every view so filters are always reachable) -->
     <!-- Controls -->
     <div class="ctrls">
         <label>VIEW</label>
@@ -838,8 +1043,13 @@ body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Rob
             <button id="bGroup" onclick="setView('group')">📁 Group</button>
             <button id="bGraph" onclick="setView('graph')">📈 Graph</button>
             <button id="bTags" onclick="setView('tags')">🏷 Tags</button>
+            <button id="bNetwork" onclick="setView('network')">🕸 Network</button>
         </div>
-        <label style="margin-left:16px">Sort</label>
+        <label style="margin-left:16px">Search</label>
+        <input id="selQ" type="search" placeholder="image / subject / notes   ( / )" oninput="apply()"
+               autocomplete="off"
+               style="padding:6px 10px;border:1px solid #d5dbe6;border-radius:7px;font:inherit;font-size:12px;min-width:200px">
+        <label>Sort</label>
         <select id="selSort" onchange="apply()">
             <option value="sD">Suitability ↓</option>
             <option value="sA">Suitability ↑</option>
@@ -866,6 +1076,24 @@ body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Rob
 
     <div class="info" id="info">Showing {total_cards} / {total_cards}</div>
 
+    <!-- GLANCE View: Summary + stats + sample cards -->
+    <div class="glance" id="glance">
+        <h3 style="color:#1a237e;margin-bottom:12px">📊 Dataset Overview</h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-bottom:20px">
+            <div class="sc"><div class="lbl">Total Images</div><div class="val">{stats["total"]}</div><div class="sub">annotated images</div></div>
+            <div class="sc"><div class="lbl">Avg Suitability</div><div class="val">{stats["avg_suitability"]}</div><div class="sub">/10 ({stats["median_suitability"]} median)</div></div>
+            <div class="sc"><div class="lbl">Categories</div><div class="val">{len(stats["categories"])}</div><div class="sub">distinct types</div></div>
+            <div class="sc"><div class="lbl">Volumes</div><div class="val">{len(vol_counts)}</div><div class="sub">detected from filenames</div></div>
+            <div class="sc"><div class="lbl">Tags</div><div class="val">{len(tag_counts)}</div><div class="sub">category tokens</div></div>
+            <div class="sc"><div class="lbl">Linework</div><div class="val">{stats["quality"].get("linework",0):.1f}</div><div class="sub">/10 avg quality</div></div>
+            <div class="sc err"><div class="lbl">Errors</div><div class="val">{err_count}</div><div class="sub">{err_pct}% timeout/unparseable</div></div>
+        </div>
+        <h3 style="color:#1a237e;margin:0 0 10px">⭐ Top rated samples</h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px">
+            {sample_html}
+        </div>
+    </div>
+
     <!-- Grid -->
     <div class="gv hidden" id="grid">{cards_html}</div>
 
@@ -886,6 +1114,17 @@ body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Rob
 
     <!-- Grouped by Tags (rebuilt from category tokens) -->
     <div class="grp hidden" id="tags"><div id="tagRoot"></div></div>
+
+    <!-- Tag co-occurrence network (server-side SVG) -->
+    <div class="grp hidden" id="network">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px">
+            <strong style="color:#1a237e">🕸 Tag co-occurrence network</strong>
+            <span style="font-size:11px;color:#7b8794">ノード＝タグ（画像数） / 線＝同じ画像に付与されたタグ</span>
+            <span style="flex:1"></span>
+            <button class="btn" onclick="downloadNetwork()">SVGを保存</button>
+        </div>
+        <div class="netwrap">{network_svg}</div>
+    </div>
 
     <!-- Graph / Charts Focus -->
     <div class="graph hidden" id="graph">
@@ -930,11 +1169,11 @@ apply();
 
 // ── View toggle ──
 function setView(v) {{
-    const views = ['glance','grid','list','group','graph','tags'];
+    const views = ['glance','grid','list','group','graph','tags','network'];
     views.forEach(n => document.getElementById(n).classList.add('hidden'));
     document.getElementById(v).classList.remove('hidden');
     document.querySelectorAll('.vtog button').forEach(b=>b.classList.remove('on'));
-    const idMap = {{glance:'bGlance',grid:'bGrid',list:'bList',group:'bGroup',graph:'bGraph',tags:'bTags'}};
+    const idMap = {{glance:'bGlance',grid:'bGrid',list:'bList',group:'bGroup',graph:'bGraph',tags:'bTags',network:'bNetwork'}};
     if(idMap[v]) document.getElementById(idMap[v]).classList.add('on');
     if(v === 'graph') {{
         setTimeout(() => ['chCat','chSuit','chQual','chDist','chVol','chTag'].forEach(id => {{
@@ -944,10 +1183,13 @@ function setView(v) {{
     }}
     apply();
     const info = document.getElementById('info');
+    // The Glance view has its own KPI header, so the count line is redundant there.
+    info.style.display = (v === 'glance') ? 'none' : '';
     if(v === 'glance') info.textContent = 'Overview';
     else if(v === 'group') info.textContent = document.querySelectorAll('#group > div').length + ' groups';
     else if(v === 'tags') info.textContent = document.querySelectorAll('#tagRoot .tag-sec').length + ' tags';
     else if(v === 'graph') info.textContent = '6 charts';
+    else if(v === 'network') info.textContent = 'tag network';
 }}
 
 // ── Filter / Sort ──
@@ -955,9 +1197,11 @@ function apply() {{
     const sort = document.getElementById('selSort').value;
     const catF = document.getElementById('selCat').value;
     const suitF = document.getElementById('selSuit').value;
+    const qF = (document.getElementById('selQ')?.value || '').trim().toLowerCase();
 
     const cards = [...document.querySelectorAll('#grid .img-card')];
     const rows = [...document.querySelectorAll('#list .lrow')];
+    const groups = [...document.querySelectorAll('#group .gcard')];
 
     // Filter
     const pick = (el) => {{
@@ -967,12 +1211,17 @@ function apply() {{
             const [lo,hi] = suitF.split('-').map(Number);
             if(suit < lo || suit > hi) return false;
         }}
+        if(qF) {{
+            const hay = `${{el.dataset.name || ''}} ${{el.dataset.subj || ''}} ${{el.dataset.notes || ''}}`.toLowerCase();
+            if(!hay.includes(qF)) return false;
+        }}
         return true;
     }};
 
     const show = (els) => els.forEach(e => e.style.display = pick(e) ? '' : 'none');
     show(cards);
     show(rows);
+    show(groups);
 
     // Sort all elements (visible + hidden) so filters can be cleared safely
     const doSort = (els) => {{
@@ -994,12 +1243,15 @@ function apply() {{
     doSort(cards);
     doSort(rows);
 
+    const shown = cards.filter(e => e.style.display !== 'none').length;
     document.getElementById('info').textContent =
-        `Showing ${{cards.filter(e=>e.style.display!=='none').length}} / ${{cards.length}}`;
+        `Showing ${{shown}} / ${{cards.length}}` + (qF ? `  ·  ${{shown}} hits` : '');
 }}
 
 function reset() {{
     document.getElementById('selSort').value = 'sD';
+    const q = document.getElementById('selQ');
+    if (q) q.value = '';
     document.getElementById('selCat').value = '';
     document.getElementById('selSuit').value = '';
     setView('glance');
@@ -1032,6 +1284,10 @@ def main() -> None:
     ap.add_argument("--output", type=Path, default=None)
     ap.add_argument("--img-dir", default="images", help="Image path prefix written into the HTML (relative to the output file)")
     ap.add_argument("--title", default="Hokusai Dashboard")
+    ap.add_argument("--plotly-cdn", action="store_true",
+                    help="Load plotly.js from cdn.plot.ly instead of the bundled plotly.min.js")
+    ap.add_argument("--plotly-js", default=None,
+                    help="Explicit plotly.js URL/path written into the HTML")
     args = ap.parse_args()
 
     sd = Path(__file__).resolve().parent
@@ -1047,7 +1303,18 @@ def main() -> None:
     print(f"Errors:  {len(errors)}")
 
     output = args.output or (docs_dir / "dashboard.html")
-    build_dashboard(all_images, errors, args.img_dir, output, args.title)
+    plotly_js = args.plotly_js or (PLOTLY_JS_CDN if args.plotly_cdn else PLOTLY_JS_LOCAL)
+
+    # Keep the bundled plotly.js next to the dashboard so relative paths resolve.
+    if plotly_js == PLOTLY_JS_LOCAL:
+        bundle = output.parent / PLOTLY_JS_LOCAL
+        if not bundle.exists():
+            from plotly.offline import get_plotlyjs
+
+            bundle.write_text(get_plotlyjs(), encoding="utf-8")
+            print(f"plotly.js → {bundle} ({bundle.stat().st_size // 1024} KB)")
+
+    build_dashboard(all_images, errors, args.img_dir, output, args.title, plotly_js=plotly_js)
 
 
 if __name__ == "__main__":

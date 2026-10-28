@@ -11,6 +11,11 @@
   ul { list-style:none; padding:0; display:grid; gap:12px; margin-top:24px; }
   a.card { display:block; background:#fff; border-radius:12px; padding:18px 20px; text-decoration:none; color:#1a237e; box-shadow:0 1px 6px rgba(0,0,0,.08); font-weight:600; }
   a.card span { display:block; color:#7f8c8d; font-weight:400; font-size:12px; margin-top:4px; }
+  h2 { color:#1a237e; font-size:16px; margin:36px 0 12px; }
+  .shots { display:grid; gap:16px; }
+  figure { margin:0; background:#fff; border-radius:12px; padding:12px; box-shadow:0 1px 6px rgba(0,0,0,.08); }
+  figure img { display:block; width:100%; height:auto; border-radius:8px; }
+  figcaption { color:#7f8c8d; font-size:12px; margin-top:8px; }
 </style>
 </head>
 <body>
@@ -21,5 +26,21 @@
   <li><a class="card" href="viewer.html">📖 Volume Viewer<span>15巻のメタデータと NDL / IIIF リンク</span></a></li>
   <li><a class="card" href="data/">🗂 Data<span>metadata.json / annotations.txt / VLM 注釈（JSONL・SQLite）</span></a></li>
 </ul>
+
+<h2>📸 Screenshots</h2>
+<div class="shots">
+  <figure>
+    <img src="demo/dashboard-overview.png" alt="Dashboard overview (Glance)" loading="lazy">
+    <figcaption>Glance — KPI カードと高評価サンプル。上部に検索・ソート・カテゴリ絞り込み。</figcaption>
+  </figure>
+  <figure>
+    <img src="demo/dashboard-graph.png" alt="Dashboard graph tab" loading="lazy">
+    <figcaption>Graph — カテゴリ分布 / 適合度ヒストグラム / LoRA品質レーダー / 適合度レンジ / 巻分布 / タグ分布。</figcaption>
+  </figure>
+  <figure>
+    <img src="demo/dashboard-sequence.png" alt="Sequential viewer (順番に見る)" loading="lazy">
+    <figcaption>順番に見る — 現在の絞り込み順に 1 枚ずつ読む詳細ビュー（← / → キー、読み上げ、Raw VLM response）。</figcaption>
+  </figure>
+</div>
 </body>
 </html>
