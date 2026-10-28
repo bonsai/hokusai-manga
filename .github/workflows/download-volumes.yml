@@ -55,24 +55,25 @@ jobs:
             echo "Direct PID download: $PIDS"
           elif [ "$ROLL_INPUT" = "all" ] || [ -z "$ROLL_INPUT" ]; then
             echo "Downloading all pending volumes from rolls.yaml..."
-            PIDS=$(python3 -c "
-import yaml
-with open('$ROLLS') as f:
-    data = yaml.safe_load(f)
-for r in data['rolls']:
-    if r['status'] == 'pending':
-        print(r['pid'])
-")
+            PIDS=$(python3 - "$ROLLS" <<'PY'
+          import sys, yaml
+          data = yaml.safe_load(open(sys.argv[1]))
+          for r in data['rolls']:
+              if r['status'] == 'pending':
+                  print(r['pid'])
+          PY
+          )
           else
             echo "Downloading roll $ROLL_INPUT..."
-            PIDS=$(python3 -c "
-import yaml
-with open('$ROLLS') as f:
-    data = yaml.safe_load(f)
-for r in data['rolls']:
-    if str(r['roll']) == '$ROLL_INPUT' and r['status'] == 'pending':
-        print(r['pid'])
-")
+            PIDS=$(python3 - "$ROLLS" "$ROLL_INPUT" <<'PY'
+          import sys, yaml
+          data = yaml.safe_load(open(sys.argv[1]))
+          wanted = sys.argv[2]
+          for r in data['rolls']:
+              if str(r['roll']) == wanted and r['status'] == 'pending':
+                  print(r['pid'])
+          PY
+          )
           fi
 
           if [ -z "$PIDS" ]; then

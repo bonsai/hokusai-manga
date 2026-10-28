@@ -1,0 +1,106 @@
+name: Download one Hokusai Manga volume
+
+on:
+  workflow_dispatch:
+    inputs:
+      pid:
+        description: "NDL PID for one volume (851646-851660)"
+        required: true
+        type: choice
+        options:
+          - "851646"
+          - "851647"
+          - "851648"
+          - "851649"
+          - "851650"
+          - "851651"
+          - "851652"
+          - "851653"
+          - "851654"
+          - "851655"
+          - "851656"
+          - "851657"
+          - "851658"
+          - "851659"
+          - "851660"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hokusai-manga-volume-${{ inputs.pid }}
+  cancel-in-progress: false
+
+jobs:
+  download-one-volume:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download selected volume only
+        id: download
+        continue-on-error: true
+        shell: bash
+        env:
+          PID: ${{ inputs.pid }}
+        run: |
+          python agents/skills/getter/download_ndl_iiif.py \
+            --pid "$PID" --output assets --delay 1.5 \
+            --metadata docs/data/metadata.json
+          result=$?
+          echo "download_result=$result" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Summarize this volume
+        if: always()
+        shell: bash
+        env:
+          PID: ${{ inputs.pid }}
+          RESULT: ${{ steps.download.outputs.download_result }}
+        run: |
+          mkdir -p "assets/$PID"
+          {
+            echo "## Hokusai Manga volume $PID"
+            if [ "$RESULT" = "0" ]; then
+              echo "- Status: complete"
+            else
+              echo "- Status: partial or failed; inspect errors.txt"
+            fi
+            if [ -f "assets/$PID/pages.json" ]; then
+              python - "$PID" <<'PY'
+          import json, pathlib, sys
+          pid = sys.argv[1]
+          data = json.loads(pathlib.Path(f"assets/{pid}/pages.json").read_text(encoding="utf-8"))
+          pages = data.get("pages", [])
+          ok = sum(p.get("download_status") in {"downloaded", "available"} for p in pages)
+          print(f"- Pages available: {ok}/{len(pages)}")
+          PY
+            fi
+            if [ -s "assets/$PID/errors.txt" ]; then
+              echo "- Errors: $(wc -l < "assets/$PID/errors.txt") line(s) in errors.txt"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload volume artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hokusai-manga-volume-${{ inputs.pid }}
+          path: |
+            assets/${{ inputs.pid }}/
+            docs/data/metadata.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Mark incomplete volume
+        if: steps.download.outputs.download_result != '0'
+        run: |
+          echo "This volume has missing or failed pages. The artifact was still uploaded for review/retry."
+          exit 1

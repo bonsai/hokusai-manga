@@ -1,4 +1,4 @@
-# hokusai-manga
+# Hokusai Manga — NDL IIIF / LoRA dataset
 
 NDL IIIF-based research tools for preparing publicly accessible pages of Katsushika Hokusai's *Hokusai Manga* as a compact LoRA training dataset, plus VLM annotation and a static review dashboard.
 
@@ -12,15 +12,17 @@ NDL IIIF-based research tools for preparing publicly accessible pages of Katsush
 │   ├── index.html            # ランディングページ
 │   ├── dashboard.html        # VLM レビュー集計（viewer skill が生成）
 │   ├── viewer.html           # 巻メタデータビューア
+│   ├── plotly.min.js         # 同梱 plotly.js（ダッシュボードが相対参照）
+│   ├── demo/                 # デモ用スクリーンショット（index.html から掲載）
 │   ├── images/               # 114枚のページ画像（720px幅）
-│   ├── img/index.json         # viewer 用画像インデックス（packager skill が生成）
+│   ├── img/index.json        # viewer 用画像インデックス（packager skill が生成）
 │   └── data/                 # 公開データ（metadata / annotations / VLM 注釈）
 ├── agents/skills/            # スキーマ（skill.yaml）+ worker（*.py）のみ
 │   ├── getter/               # NDL IIIF から画像取得
 │   ├── packager/             # LoRA ZIP 作成・画像インデックス生成
 │   ├── reviewer/             # VLM 注釈（docs/data を更新）
 │   └── viewer/               # docs/dashboard.html 生成 + FastAPI サーバ
-└── .github/workflows/        # ダウンロード / GitHub Pages
+└── .github/workflows/        # 1巻ずつDL / 一括DL / 結合パッケージ / GitHub Pages
 ```
 
 ### Rules
@@ -30,22 +32,60 @@ NDL IIIF-based research tools for preparing publicly accessible pages of Katsush
 - 生成物は生成元の worker が `docs/` 配下へ出力する（手動コピーしない）。
 - 一時ファイル・外部由来の大容量データは `assets/`, `dist/`, `local/`（すべて git 管理外）。
 - ディレクトリ構造の記述はこの README だけに置く。
+> **Workflow policy:** download and verify one volume at a time. Do not treat a partial download as complete. Combine the volumes only after reviewing the per-volume artifacts.
 
-## Download all 15 volumes and create a LoRA ZIP
+## Volume-by-volume workflow
 
-1. Open [Actions → Download and package Hokusai Manga for LoRA](https://github.com/bonsai/hokusai-manga/actions/workflows/download-volumes.yml).
-2. Select **Run workflow** (no inputs required).
-3. Wait for the run to finish. It downloads NDL PIDs `851646`–`851660` (volumes 1–15).
-4. Download the `hokusai-manga-lora-dataset` artifact from the run summary.
-5. Extract `hokusai_manga_lora_dataset.zip` and upload it to Kaggle as a dataset.
+The preferred path is **one volume at a time**: download a single PID, inspect its artifact, then move on. Never treat a partial download as complete, and combine volumes only after copying the Kanban below.
 
-The ZIP contains `images/`, one same-name `.txt` caption per image, `dataset.json` provenance/size metadata, and `README.txt`. Captions use the trigger `hokusai_manga`.
+1. Open [Actions → Download one Hokusai Manga volume](https://github.com/bonsai/hokusai-manga/actions/workflows/download-one-volume.yml).
+2. Select **Run workflow** and choose exactly one PID (`851646`–`851660`).
+3. Check the run summary for `Pages available: N/M`, then download the `hokusai-manga-volume-<PID>` artifact.
+4. Inspect `pages.json` and `errors.txt`. Missing pages mean the volume is **partial**, not done.
+5. Move that volume's checkbox in the Kanban below, then repeat for the next PID.
 
-### Image compression
+The bulk [Download Hokusai Manga Volumes](https://github.com/bonsai/hokusai-manga/actions/workflows/download-volumes.yml) workflow (`roll: all`) still exists for convenience; it runs the same downloader through `agents/skills/getter/download_rolls.py`.
 
-The packaging step converts pages to RGB JPEG, resizes the longest edge to at most 1024 px, and saves at JPEG quality 88. This reduces dataset size for an initial LoRA experiment; it is a lossy conversion, so the original downloaded images and IIIF manifests are retained separately in the workflow run workspace, not committed to Git. The artifact retention period is 14 days, so download it promptly.
+## Kanban
 
-The workflow continues after individual page-download failures so it can package the pages that succeeded. If any download failed, the run is marked failed after the ZIP artifact is uploaded; inspect the per-volume `errors.txt` files in the artifact.
+Update this board as each volume is processed. The volume is **Done** only when its artifact has been inspected and its missing-page status is understood.
+
+### To do
+
+- [ ] **Volume 1 — PID 851646**
+- [ ] **Volume 3 — PID 851648**
+- [ ] **Volume 4 — PID 851649**
+- [ ] **Volume 5 — PID 851650**
+- [ ] **Volume 6 — PID 851651**
+- [ ] **Volume 7 — PID 851652**
+- [ ] **Volume 8 — PID 851653**
+- [ ] **Volume 9 — PID 851654**
+- [ ] **Volume 10 — PID 851655**
+- [ ] **Volume 11 — PID 851656**
+- [ ] **Volume 12 — PID 851657**
+- [ ] **Volume 13 — PID 851658**
+- [ ] **Volume 14 — PID 851659**
+- [ ] **Volume 15 — PID 851660**
+
+### Doing
+
+- [ ] **Volume 2 — PID 851647** — run the one-volume action and inspect its artifact.
+
+### Done
+
+- [ ] No volumes verified yet.
+
+### How a Kanban entry is produced
+
+- artifact `hokusai-manga-volume-<PID>` contains `assets/<PID>/` and `docs/data/metadata.json`
+- `pages.json` records per-page `download_status` (`downloaded` / `available` / `error`)
+- a volume moves to **Done** only when every page is accounted for and its `errors.txt` is understood
+
+## Combine collected volumes into the LoRA ZIP
+
+1. Open [Actions → Combine collected volumes for LoRA](https://github.com/bonsai/hokusai-manga/actions/workflows/package-collected-volumes.yml).
+2. Enter the comma-separated run IDs of the completed volume downloads in `run_ids`.
+3. Download the `hokusai-manga-lora-dataset-combined` artifact and inspect the ZIP before training.
 
 ## Agents (skills)
 
@@ -170,13 +210,19 @@ python -m pip install -r requirements.txt
 python agents/skills/viewer/server.py
 ```
 
-Output ZIP: `dist/hokusai_manga_lora_dataset.zip`.
+The downloader stores each volume under `assets/<PID>/` with `manifest.json`, `pages.json` and `errors.txt`. Existing files are reused on retry only when their bytes carry a recognised image signature.
+
+## Troubleshooting
+
+- **HTTP 403** — NDL may be denying a specific image request. This is not necessarily transient; check the record and its access conditions.
+- **Unexpected Content-Type** — bytes are validated by image signature (JPEG / PNG / GIF / WebP), so HTML error pages are never saved as images.
+- **Partial volume** — use `pages.json` and `errors.txt` to identify failed pages, then rerun that PID.
+- **Combine step fails** — confirm each run ID still has an unexpired `hokusai-manga-volume-<PID>` artifact.
 
 ## Rights and responsible use
 
-The NDL records for the original historical volumes identify these digital materials as internet-accessible; still verify the rights and access conditions on each individual record before training, sharing, or redistributing a derived dataset. This tool does not bypass access controls. Downloads are paced to avoid rapid repeated requests; follow NDL's current API terms and guidance.
+Check the rights and access conditions on each NDL record before training, sharing, or redistributing a derived dataset. This workflow does not bypass access controls. Requests are paced to reduce load; follow NDL's current API terms and guidance.
 
-## IIIF endpoints
+## IIIF endpoint
 
-- Manifest: `https://dl.ndl.go.jp/api/iiif/<PID>/manifest.json`
-- Image requests are derived from each canvas's IIIF image service in the manifest.
+`https://dl.ndl.go.jp/api/iiif/<PID>/manifest.json`
