@@ -1,0 +1,22 @@
+name: vlm_server
+version: 1.0.0
+description: "Run the Hokusai VLM dashboard server with camera demo and age estimation"
+entry_point: server.py
+workers:
+  - server.py
+commands:
+  - name: serve
+    description: "Start the FastAPI dashboard + VLM camera demo on port 3002"
+    usage: "python agents/skills/vlm_server/server.py [--port 3002]"
+  - name: check
+    description: "Check VLM endpoint health"
+    usage: "python agents/skills/vlm_server/server.py --check"
+inputs:
+  vlm_base_url: "${VLM_BASE_URL:-http://127.0.0.1:1234/v1}"
+  vlm_model: "${VLM_MODEL:-qwen2.5-vl-3b}"
+  vlm_api_key: "${VLM_API_KEY:-}"
+outputs:
+  dashboard: http://127.0.0.1:3002
+  vlm_demo: http://127.0.0.1:3002/vlm
+  api_vlm: http://127.0.0.1:3002/api/vlm
+  api_health: http://127.0.0.1:3002/api/vlm/health

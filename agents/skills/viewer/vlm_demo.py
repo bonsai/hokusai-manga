@@ -124,6 +124,10 @@ PAGE_HTML = r"""<!doctype html>
         <option value="lora">LoRA review (JSON)</option>
         <option value="describe">Describe (日本語)</option>
         <option value="ocr">OCR / text</option>
+        <option value="age">Age estimation (年齢推定)</option>
+        <option value="simple">Simple: 年齢・動作・場所 (日本語)</option>
+        <option value="simple_en">Simple: Age/Action/Location (English)</option>
+        <option value="dance">💃 Dance detection (踊り判定)</option>
         <option value="custom">Custom</option>
       </select>
       <span class="muted">画像は 1024px に縮小して送信</span>
@@ -142,6 +146,9 @@ PAGE_HTML = r"""<!doctype html>
       <h2 style="margin:0">Text output</h2>
       <span class="spacer"></span>
       <button id="prettyBtn">JSON整形</button>
+      <button id="translateBtn">🇯🇵 日本語化</button>
+      <button id="speakBtn">🔊 読み上げ</button>
+      <button id="stopSpeakBtn" disabled>⏹ 停止</button>
       <button id="copyBtn">コピー</button>
       <button id="downloadBtn">.txt保存</button>
     </div>
@@ -158,7 +165,7 @@ const camSelect = $('camSelect'), fileInput = $('fileInput'), resetBtn = $('rese
 const imgInfo = $('imgInfo'), preset = $('preset'), promptEl = $('prompt');
 const analyzeBtn = $('analyzeBtn'), clearBtn = $('clearBtn'), elapsed = $('elapsed');
 const textView = $('textView'), errorBox = $('error'), healthEl = $('health');
-const prettyBtn = $('prettyBtn'), copyBtn = $('copyBtn'), downloadBtn = $('downloadBtn');
+const prettyBtn = $('prettyBtn'), translateBtn = $('translateBtn'), speakBtn = $('speakBtn'), stopSpeakBtn = $('stopSpeakBtn'), copyBtn = $('copyBtn'), downloadBtn = $('downloadBtn');
 
 const PROMPTS = {
   lora: `__DEFAULT_PROMPT__`,
@@ -166,6 +173,39 @@ const PROMPTS = {
 人物・動物・風景・文字・構図など、見える要素を整理して出力してください。`,
   ocr: `画像内の文字を読み取り、そのままテキストで出力してください。
 読み取れない文字は「?」としてください。`,
+  age: `この画像に写っている人物の年齢を推定してください。
+出力形式は以下の JSON のみで返してください：
+{
+  "age_estimate": "推定年齢（例: 25歳前後、10代後半〜20代前半など）",
+  "confidence": "高/中/低",
+  "reasoning": "判断根拠（顔の特徴、肌の質感、髪型、服装、背景など）"
+}
+人物が複数いる場合は、最も目立つ人物（中央にいる、大きく写っている等）を対象としてください。
+人物が写っていない場合は age_estimate を "人物なし" としてください。`,
+  simple: `この画像に写っている人物について、以下の3点のみ JSON で答えてください（出力は日本語のみ）：
+{
+  "age": "推定年齢（例: 25歳前後）",
+  "action": "何をしているか（例: 手を振っている、本を読んでいる）",
+  "location": "どこにいるか（例: 屋内の部屋、公園、駅のホーム）"
+}
+人物がいない場合は age を "人物なし"、action と location を "" としてください。
+キー名（age/action/location）はそのまま、値だけ日本語にしてください。`,
+  simple_en: `Answer ONLY a JSON object with these 3 fields about the person in the image:
+{
+  "age": "estimated age (e.g., around 25 years old)",
+  "action": "what they are doing (e.g., waving hand, reading a book)",
+  "location": "where they are (e.g., indoor room, park, train platform)"
+}
+If no person, set age to "No person" and action/location to "".`,
+  dance: `この画像に踊り・舞踊のシーンが含まれているか判定してください。
+出力は以下の JSON のみ：
+{
+  "is_dance": true/false,
+  "dance_type": "日本舞踊/民謡/盆踊り/神楽/能楽/その他/該当なし",
+  "confidence": "高/中/低",
+  "description": "何が描かれているか簡潔に（例: 扇子を持って舞う女性、太鼓に合わせて踊る群衆）"
+}
+踊りでない場合は is_dance: false, dance_type: "該当なし" としてください。`,
   custom: ''
 };
 
@@ -173,6 +213,7 @@ let stream = null;
 let imageData = '';
 let rawText = '';
 let pretty = false;
+let translated = false;
 let vlmModel = '';
 const canvas = document.createElement('canvas');
 const ctx = canvas.getContext('2d');
@@ -181,6 +222,62 @@ function setError(message) {
   if (!message) { errorBox.hidden = true; errorBox.textContent = ''; return; }
   errorBox.hidden = false;
   errorBox.textContent = message;
+}
+
+function getJapaneseText(text) {
+  if (!text) return '';
+  
+  // Simple English to Japanese translation for common VLM responses
+  const translations = [
+    [/^A person is waving their hand in an indoor setting\./, '人が屋内で手を振っています。'],
+    [/^A person is ([^.]+)\./, '人が$1しています。'],
+    [/^There is a person ([^.]+)\./, '人が$1います。'],
+    [/^The image shows ([^.]+)\./, '画像には$1が写っています。'],
+    [/^This image depicts ([^.]+)\./, 'この画像は$1を描いています。'],
+    [/^An? ([^.]+) is ([^.]+)\./, '$1が$2しています。'],
+    [/^An? ([^.]+) in ([^.]+)\./, '$2の中に$1があります。'],
+    [/indoor setting/, '屋内'],
+    [/outdoor setting/, '屋外'],
+    [/waving (?:their |his |her )?hand/, '手を振る'],
+    [/standing/, '立っている'],
+    [/sitting/, '座っている'],
+    [/walking/, '歩いている'],
+    [/running/, '走っている'],
+    [/smiling/, '笑っている'],
+    [/looking at (?:the |)(?:camera|lens)/, 'カメラを見ている'],
+    [/holding ([^.]+)/, '$1を持っている'],
+    [/wearing ([^.]+)/, '$1を着ている'],
+    [/in (?:an? |the )?([^.]+) (?:room|setting|area)/, '$1な部屋で'],
+    [/with ([^.]+)/, '$1とともに'],
+    [/person/gi, '人'],
+    [/man/gi, '男性'],
+    [/woman/gi, '女性'],
+    [/child/gi, '子供'],
+    [/boy/gi, '男の子'],
+    [/girl/gi, '女の子'],
+    [/hand/gi, '手'],
+    [/face/gi, '顔'],
+  ];
+  
+  let result = text;
+  for (const [pattern, replacement] of translations) {
+    result = result.replace(pattern, replacement);
+  }
+  
+  // If no translation applied, return original with a note
+  if (result === text && /^[A-Z]/.test(text.trim())) {
+    return text + ' （日本語訳未対応）';
+  }
+  return result;
+}
+
+function renderText() {
+  if (!rawText) { textView.textContent = 'まだ結果がありません。'; return; }
+  if (pretty) {
+    try { textView.textContent = JSON.stringify(JSON.parse(rawText), null, 2); return; }
+    catch (_) { pretty = false; prettyBtn.textContent = 'JSON整形'; }
+  }
+  textView.textContent = translated ? getJapaneseText(rawText) : rawText;
 }
 
 function setImage(dataUrl, label) {
@@ -269,13 +366,130 @@ function capture() {
   setImage(canvas.toDataURL('image/jpeg', 0.9), `撮影: ${canvas.width}×${canvas.height}px`);
 }
 
-function renderText() {
-  if (!rawText) { textView.textContent = 'まだ結果がありません。'; return; }
-  if (pretty) {
-    try { textView.textContent = JSON.stringify(JSON.parse(rawText), null, 2); return; }
-    catch (_) { pretty = false; prettyBtn.textContent = 'JSON整形'; }
+// Play notification sounds using Web Audio API
+let analysisSoundInterval = null;
+let analysisAudioCtx = null;
+
+function startAnalysisSound() {
+  // Play initial notification
+  playTone([660, 880], 0.15, 0.1);
+  
+  // Start looping thinking sound every 2 seconds
+  analysisAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  analysisSoundInterval = setInterval(() => {
+    playThinkingPulse(analysisAudioCtx);
+  }, 2000);
+}
+
+function stopAnalysisSound() {
+  if (analysisSoundInterval) {
+    clearInterval(analysisSoundInterval);
+    analysisSoundInterval = null;
   }
-  textView.textContent = rawText;
+  if (analysisAudioCtx) {
+    analysisAudioCtx.close().catch(() => {});
+    analysisAudioCtx = null;
+  }
+}
+
+function playThinkingPulse(ctx) {
+  try {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    // Soft pulsing tone
+    osc.frequency.setValueAtTime(440, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(550, ctx.currentTime + 0.3);
+    osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.6);
+    gain.gain.setValueAtTime(0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.05, ctx.currentTime + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.6);
+  } catch (_) {}
+}
+
+function playDoneSound() {
+  // Elaborate success fanfare: ascending arpeggio + chord
+  playFanfare([
+    { freq: 523.25, delay: 0.00, dur: 0.3 },   // C5
+    { freq: 659.25, delay: 0.10, dur: 0.3 },   // E5
+    { freq: 783.99, delay: 0.20, dur: 0.3 },   // G5
+    { freq: 1046.5, delay: 0.30, dur: 0.5 },   // C6
+    { freq: 1318.5, delay: 0.40, dur: 0.6 },   // E6
+    { freq: 1568.0, delay: 0.50, dur: 0.8 },   // G6
+  ]);
+  // Final major chord
+  setTimeout(() => playChord([1046.5, 1318.5, 1568.0, 2093.0], 1.0), 600);
+}
+
+function playErrorSound() {
+  // Descending minor chord for error
+  playFanfare([
+    { freq: 440, delay: 0.00, dur: 0.4 },     // A4
+    { freq: 370, delay: 0.15, dur: 0.4 },     // F#4
+    { freq: 311, delay: 0.30, dur: 0.6 },     // D#4
+  ]);
+  setTimeout(() => playChord([311, 370, 440], 1.0), 500);
+}
+
+function playFanfare(notes) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    notes.forEach(note => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(note.freq, ctx.currentTime + note.delay);
+      gain.gain.setValueAtTime(0, ctx.currentTime + note.delay);
+      gain.gain.linearRampToValueAtTime(0.08, ctx.currentTime + note.delay + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + note.delay + note.dur);
+      osc.start(ctx.currentTime + note.delay);
+      osc.stop(ctx.currentTime + note.delay + note.dur);
+    });
+  } catch (_) {}
+}
+
+function playChord(freqs, duration) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    freqs.forEach(freq => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, ctx.currentTime);
+      gain.gain.setValueAtTime(0, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.06, ctx.currentTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + duration);
+    });
+  } catch (_) {}
+}
+
+function playTone(freqs, dur, gap) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    freqs.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      const t = ctx.currentTime + i * gap;
+      osc.frequency.setValueAtTime(freq, t);
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(0.1, t + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      osc.start(t);
+      osc.stop(t + dur);
+    });
+  } catch (_) {}
 }
 
 async function analyze() {
@@ -285,6 +499,7 @@ async function analyze() {
   analyzeBtn.disabled = true;
   analyzeBtn.textContent = '解析中…';
   textView.textContent = 'VLM が考えています…';
+  startAnalysisSound();
   const started = performance.now();
   try {
     const res = await fetch('/api/vlm', {
@@ -299,10 +514,14 @@ async function analyze() {
     prettyBtn.textContent = 'JSON整形';
     renderText();
     elapsed.textContent = ((performance.now() - started) / 1000).toFixed(1) + 's · ' + (data.model || '');
+    stopAnalysisSound();
+    playDoneSound();
     checkHealth();
   } catch (err) {
     setError('解析に失敗しました: ' + (err.message || err));
     textView.textContent = '';
+    stopAnalysisSound();
+    playErrorSound();
   } finally {
     analyzeBtn.disabled = false;
     analyzeBtn.textContent = '🤖 VLMで解析';
@@ -349,6 +568,36 @@ prettyBtn.onclick = () => {
   prettyBtn.textContent = pretty ? '生テキスト' : 'JSON整形';
   renderText();
 };
+
+translateBtn.onclick = () => {
+  translated = !translated;
+  translateBtn.textContent = translated ? '🇬🇧 英語に戻す' : '🇯🇵 日本語化';
+  renderText();
+};
+
+let speechUtterance = null;
+speakBtn.onclick = () => {
+  const text = translated ? getJapaneseText(rawText) : rawText;
+  if (!text || text === 'まだ結果がありません。') return;
+  speechUtterance = new SpeechSynthesisUtterance(text);
+  speechUtterance.lang = 'ja-JP';
+  speechUtterance.rate = 1.0;
+  speechUtterance.pitch = 1.0;
+  speechSynthesis.speak(speechUtterance);
+  speakBtn.disabled = true;
+  stopSpeakBtn.disabled = false;
+  speechUtterance.onend = () => {
+    speakBtn.disabled = false;
+    stopSpeakBtn.disabled = true;
+  };
+};
+
+stopSpeakBtn.onclick = () => {
+  speechSynthesis.cancel();
+  speakBtn.disabled = false;
+  stopSpeakBtn.disabled = true;
+};
+
 downloadBtn.onclick = () => {
   if (!rawText) return;
   const blob = new Blob([textView.textContent], { type: 'text/plain;charset=utf-8' });
